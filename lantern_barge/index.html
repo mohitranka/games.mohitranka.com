@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Lantern Barge</title>
+    <meta name="description" content="First-person boxing in the browser, played with your fists in front of a webcam." />
+    <link rel="icon" href="data:," />
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module" src="./src/main.js"></script>
+  </head>
+  <body class="booting phase-boot">
+    <canvas id="gl" aria-label="Boxing ring"></canvas>
+    <div id="hud"></div>
+
+    <section id="boot" aria-labelledby="boot-title">
+      <h1 id="boot-title">Lantern Barge</h1>
+      <p class="privacy">Video stays on your device and is never recorded or shown.</p>
+      <div class="boot-actions">
+        <button id="btn-camera" type="button">Box with camera</button>
+        <button id="btn-keyboard" type="button">Box with keyboard</button>
+      </div>
+      <p id="boot-msg" role="alert" hidden></p>
+      <button id="btn-retry" type="button" hidden>Retry</button>
+      <p id="boot-status" aria-live="polite"></p>
+    </section>
+
+    <div id="overlay" hidden></div>
+    <video id="cam" playsinline muted hidden></video>
+  </body>
+</html>
