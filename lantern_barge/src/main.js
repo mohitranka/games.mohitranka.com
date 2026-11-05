@@ -50,6 +50,7 @@ if ((DEBUG || TEST) && params.has('mpconf')) {
   if (ok(pres)) inputTuning.minHandPresenceConfidence = pres;
   if (ok(track)) inputTuning.minTrackingConfidence = track;
 }
+if (DEBUG) inputTuning.lumEvery = 15; // brightness probe for the overlay and recordings (debug only)
 inputTuning.calibUseFace = FEATURES.slip; // D3a: chin-height framing check from the face box (face model runs with ?next=1)
 const layers = { game: 'stub', view: 'stub', audio: 'stub' };
 const events = createEventSource({ clock, tuning: inputTuning });

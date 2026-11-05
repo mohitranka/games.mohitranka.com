@@ -210,6 +210,15 @@ export function createDebugOverlay({ root, getSource, tuning, setTuning }) {
     }
   }
 
+  /** Tracking report line: seen share per hand over 2 s and half-frame brightness (screenshot this one). */
+  function diagLine(source) {
+    const d = source?.diag;
+    if (!d) return 'seen 2s  -';
+    const pct = (v) => `${Math.round(v * 100)}%`.padStart(4);
+    const lum = d.lum ? `   brightness L ${d.lum.l} R ${d.lum.r}` : '';
+    return `seen 2s  L ${pct(d.seen.left)}  R ${pct(d.seen.right)}  both ${pct(d.seen.both)}${lum}`;
+  }
+
   const api = {
     /** Called by main.js on every render with the (peeked) frame and the game state. */
     draw(frame, state) {
@@ -231,6 +240,7 @@ export function createDebugOverlay({ root, getSource, tuning, setTuning }) {
       const lines = [
         `src ${f.source}  ${tr.delegate ?? '-'}  ${tr.fps.toFixed(1)} fps  infer ${tr.inferMs.toFixed(1)} ms  pipe ${tr.pipelineMs.toFixed(0)} ms  ok ${tr.ok}`,
         `guard ${f.guard.level} raw ${f.guard.raw} L ${f.guard.left} R ${f.guard.right}   phase ${state?.phase ?? '-'}`,
+        diagLine(source),
         ...HANDS.map((h) => {
           const hs = f.hands[h];
           const s = hasHands ? source.pipeline.tracker.slots[h] : null;
@@ -288,6 +298,7 @@ export function createDebugOverlay({ root, getSource, tuning, setTuning }) {
         meta: meta ?? { subject: subject.value, distance: distance.value, lighting: lighting.value },
         onPrompt: (text) => (prompt.textContent = text),
         ...(preroll !== undefined ? { preroll } : {}),
+        header: { mpconf: [tuning.input.minHandDetectionConfidence, tuning.input.minHandPresenceConfidence, tuning.input.minTrackingConfidence] },
       });
       recorder.done.then((f) => {
         recStatus.textContent = `saved ${f.filename} (${f.rec.results.length} results, ${f.rec.cues.length} cues${f.rec.header.incomplete ? ', INCOMPLETE' : ''})`;

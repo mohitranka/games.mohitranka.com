@@ -51,6 +51,14 @@ export function createHandSource({ backend, clock, tuning, recording = null, cal
   let lastFace = null;
   let lastFaceT = -Infinity;
 
+  // diagnostics: per-hand share of results with the hand seen over the last 2 s (overlay; left-hand tracking report)
+  const seenHist = [];
+  function noteSeen(t) {
+    const s = pipeline.tracker.slots;
+    seenHist.push({ t, l: s.left.seenNow, r: s.right.seenNow });
+    while (seenHist.length && seenHist[0].t < t - 2) seenHist.shift();
+  }
+
   function ingest(result, raw = null) {
     if (result.face) {
       lastFace = result.face;
@@ -71,6 +79,7 @@ export function createHandSource({ backend, clock, tuning, recording = null, cal
       }
     }
     updateSpot(result.t);
+    noteSeen(result.t);
     gestures.update(pipeline.tracker, pipeline.recognizer, activeProfile(), result.t);
     for (const fn of listeners) fn({ result, punches, raw });
   }
@@ -162,10 +171,11 @@ export function createHandSource({ backend, clock, tuning, recording = null, cal
           minHandPresenceConfidence: tuning.minHandPresenceConfidence,
           minTrackingConfidence: tuning.minTrackingConfidence,
         },
+        lumEvery: tuning.lumEvery, // ?debug=1 brightness probe
         onResult: (m) => {
           const hands = m.hands ?? [];
           const faceRec = m.faceRan ? (m.face ?? null) : undefined; // undefined = not run this frame
-          for (const fn of rawListeners) fn({ ts: m.ts, arrival: m.arrival, w: m.w, h: m.h, hands, face: faceRec });
+          for (const fn of rawListeners) fn({ ts: m.ts, arrival: m.arrival, w: m.w, h: m.h, hands, face: faceRec, ...(m.lum ? { lum: m.lum } : {}) });
           ingest({ t: clock.fromPerfMs(m.ts), w: m.w, h: m.h, hands, face: faceRec }, m);
         },
       });
@@ -229,6 +239,18 @@ export function createHandSource({ backend, clock, tuning, recording = null, cal
     },
     get detectorStats() {
       return detector?.stats ?? null;
+    },
+    /** Overlay diagnostics: seen share per hand over 2 s ({left, right, both} 0..1) and the brightness probe. */
+    get diag() {
+      const n = seenHist.length || 1;
+      return {
+        seen: {
+          left: seenHist.filter((x) => x.l).length / n,
+          right: seenHist.filter((x) => x.r).length / n,
+          both: seenHist.filter((x) => x.l && x.r).length / n,
+        },
+        lum: detector?.stats?.lum ?? null,
+      };
     },
     get replayDone() {
       return feeder ? feeder.started && feeder.done : false;

@@ -14,7 +14,8 @@ export const tuning = {
   minHandDetectionConfidence: 0.6, // D3a: MediaPipe HandLandmarker thresholds (passed to the worker at init)
   minHandPresenceConfidence: 0.55,
   minTrackingConfidence: 0.5,
-  faceSlowMs: 8, // D13: face detector median above this → every 2nd frame
+  faceSlowMs: 8,
+  lumEvery: 0, // ?debug=1 sets 15: the worker reports half-frame brightness every 15th frame (overlay + recordings) // D13: face detector median above this → every 2nd frame
   headGraceMs: 150, // D13: a lost face holds its last head state this long
   stallMs: 2000,
   predictMaxMs: 55,

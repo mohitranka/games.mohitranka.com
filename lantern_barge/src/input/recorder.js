@@ -112,7 +112,7 @@ export const DEFAULT_PREROLL = Object.freeze({ seconds: 3, minRatio: 0.8 });
  *   preroll?:{seconds:number, minRatio:number}|null}} opts
  *   D3a: all three labels are required; `preroll: null` skips the two-hand gate (headless fake-camera specs only).
  */
-export function createRecorder({ source, script = 'full', meta = {}, onPrompt = () => {}, preroll = DEFAULT_PREROLL }) {
+export function createRecorder({ source, script = 'full', meta = {}, onPrompt = () => {}, preroll = DEFAULT_PREROLL, header: extraHeader = {} }) {
   if (!source?.onRaw) throw new Error('recorder needs the camera hand source');
   const steps = PROMPT_SCRIPTS[script];
   if (!steps) throw new Error(`unknown prompt script ${script}`);
@@ -163,6 +163,7 @@ export function createRecorder({ source, script = 'full', meta = {}, onPrompt = 
         delegate: stats.delegate ?? null, ua: navigator.userAgent, script,
         subject: meta.subject || 'anon', distance: meta.distance || 'unknown', lighting: meta.lighting || 'unknown',
         recordedAt: new Date().toISOString(),
+        ...extraHeader, // e.g. mpconf: the MediaPipe confidences in use (A/B recordings)
         ...(completed ? {} : { incomplete: true }), // D3a: stopped before the script ended
       },
       results,
@@ -222,7 +223,7 @@ export function createRecorder({ source, script = 'full', meta = {}, onPrompt = 
         }
         if (phase !== 'recording' || r.ts < t0) return;
         size = { w: r.w, h: r.h };
-        results.push({ t: Math.round((r.ts - t0) * 1000) / 1000, hands: r.hands, pipe: Math.round(r.arrival - r.ts), ...(r.face !== undefined ? { face: r.face } : {}) });
+        results.push({ t: Math.round((r.ts - t0) * 1000) / 1000, hands: r.hands, pipe: Math.round(r.arrival - r.ts), ...(r.face !== undefined ? { face: r.face } : {}), ...(r.lum ? { lum: r.lum } : {}) });
       });
       if (!preroll) begin(performance.now());
     },

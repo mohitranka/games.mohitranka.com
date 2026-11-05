@@ -27,6 +27,24 @@ let modelBytes = null;
 let landmarker = null;
 let delegate = null;
 let lastTs = -Infinity;
+// Debug brightness probe (?debug=1): mean luma of each half of the raw frame every lumEvery frames, in the player's
+// terms (raw right half = the player's left). Answers "is one side of the image darker?" (left-hand tracking).
+const lum = { every: 0, n: 0, ctx: null };
+function probeLum(bmp) {
+  if (!lum.every || ++lum.n % lum.every !== 0) return null;
+  try {
+    lum.ctx ??= new OffscreenCanvas(32, 18).getContext('2d', { willReadFrequently: true });
+    lum.ctx.drawImage(bmp, 0, 0, 32, 18);
+    const d = lum.ctx.getImageData(0, 0, 32, 18).data;
+    const sum = [0, 0];
+    for (let i = 0; i < d.length; i += 4) sum[(i >> 2) % 32 < 16 ? 0 : 1] += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    return { l: Math.round(sum[1] / (16 * 18)), r: Math.round(sum[0] / (16 * 18)) }; // l = player's left (raw right half)
+  } catch (err) {
+    console.warn('[detector-worker] brightness probe disabled:', err?.message ?? err);
+    lum.every = 0; // unsupported here: stop trying
+    return null;
+  }
+}
 let busy = false;
 // GPU pace check: a GPU delegate slower than gpuSlowInferMs (median of the first gpuPaceFrames, after one warm-up
 // frame) is replaced by the CPU delegate. Software-rendered GPUs (VMs, disabled acceleration) are far slower than CPU.
@@ -179,12 +197,13 @@ async function onFrame(m) {
   try {
     const mts = Math.max(Math.round(m.ts), lastTs + 1); // MediaPipe needs strictly increasing timestamps
     lastTs = mts;
+    const l = probeLum(bmp); // before inference: MediaPipe may consume the bitmap
     const t0 = performance.now();
     const res = landmarker.detectForVideo(bmp, mts);
     const ms = performance.now() - t0;
     let faceOut;
     if (faceDet) faceOut = runFace(bmp, mts, w, h);
-    self.postMessage({ type: 'result', ts: m.ts, ms, w, h, hands: convert(res), ...(faceOut ?? {}) });
+    self.postMessage({ type: 'result', ts: m.ts, ms, w, h, hands: convert(res), ...(faceOut ?? {}), ...(l ? { lum: l } : {}) });
     if (delegate === 'GPU' && !pace.done) paceCheck(ms);
   } catch (err) {
     self.postMessage({ type: 'result', ts: m.ts, ms: 0, w, h, hands: [], failed: true });
@@ -203,6 +222,7 @@ self.onmessage = async (e) => {
     if (m.gpuPaceFrames) pace.frames = m.gpuPaceFrames;
     face.wanted = !!m.face;
     if (m.faceSlowMs) face.slowMs = m.faceSlowMs;
+    lum.every = Math.max(0, Math.floor(m.lumEvery ?? 0));
     conf.detection = unit(m.minHandDetectionConfidence, conf.detection);
     conf.presence = unit(m.minHandPresenceConfidence, conf.presence);
     conf.tracking = unit(m.minTrackingConfidence, conf.tracking);

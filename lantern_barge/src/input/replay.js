@@ -42,6 +42,7 @@ export function toJsonl(rec) {
         hands: r.hands.map((h) => ({ lm: pts(h.lm), world: pts(h.world), label: h.label, score: r4(h.score ?? 1) })),
         ...(r.pipe !== undefined ? { pipe: r.pipe } : {}),
         ...(r.face !== undefined ? { face: r.face && { x: r4(r.face.x), y: r4(r.face.y), w: r4(r.face.w), h: r4(r.face.h), score: r4(r.face.score) } } : {}),
+        ...(r.lum ? { lum: { l: r.lum.l, r: r.lum.r } } : {}), // optional ?debug=1 brightness probe (player's left/right half, 0–255)
       }),
     })),
     ...rec.cues.map((c) => ({ t: c.t, line: JSON.stringify({ kind: 'cue', t: c.t, expect: c.expect ?? null, segment: c.segment }) })),
