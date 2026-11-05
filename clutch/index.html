@@ -1,0 +1,1561 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#172a28">
+  <meta name="description" content="Four sports. One more try. Play quick baseball, basketball, tennis and soccer challenges in your browser.">
+  <title>Clutch — the game is in your hands</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='8' fill='%23172a28'/%3E%3Cpath d='M29 12H17L10 28h13' fill='none' stroke='%23d7ef79' stroke-width='5'/%3E%3C/svg%3E">
+  <style>@font-face{font-family:Score;src:local("Menlo"),local("Consolas");font-display:swap}
+:root{color-scheme:light;--ink:#172a28;--muted:#5e6b63;--paper:#f4f2e9;--line:#d8ddd1;--accent:#d7ef79;--field:#1d5146;--white:#fffef7;--orange:#b54120;--display:Georgia,"Times New Roman",serif;font-family:"Helvetica Neue",Arial,sans-serif;color:var(--ink);background:var(--paper);font-synthesis:none;scrollbar-color:#8a9c8d var(--paper)}
+*{box-sizing:border-box}body{margin:0}button,a,input{-webkit-tap-highlight-color:transparent}button{font:inherit;cursor:pointer;border:0}button:disabled{cursor:default;opacity:.45}button:focus-visible,a:focus-visible,input:focus-visible,canvas:focus-visible{outline:3px solid #bd4a27;outline-offset:4px}button,a{touch-action:manipulation}button{color:inherit}a{color:inherit;text-underline-offset:4px}::selection{background:var(--accent);color:var(--ink)}[hidden]{display:none!important}svg{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}button svg{width:22px;height:22px}.masthead{max-width:1440px;margin:auto;display:flex;align-items:center;gap:32px;padding:25px 48px;border-bottom:1px solid var(--line)}.wordmark{text-decoration:none;font-size:43px;line-height:1;font-weight:800;letter-spacing:-.04em;font-style:italic}.brand-dot{color:var(--orange)}.brand-note{font-size:13px;color:var(--muted)}.masthead>.quiet-button{margin-left:auto}.quiet-button{background:transparent;padding:10px 14px;border:1px solid #aeb8aa;border-radius:5px;font-size:13px}.quiet-button:hover{background:#e5e8dc}main{max-width:1344px;margin:auto;padding:0 48px}.intro{display:flex;justify-content:space-between;align-items:baseline;gap:20px;padding:38px 0 26px}.intro h1{font:normal clamp(28px,3vw,44px)/1.2 var(--display);letter-spacing:-.035em;margin:0}.intro p{font-size:14px;color:var(--muted);margin:0}.sports{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-bottom:30px}.sports button{position:relative;display:grid;grid-template-columns:37px auto;column-gap:12px;align-items:center;text-align:left;padding:21px 20px;background:transparent}.sports button+button{border-left:1px solid var(--line)}.sports button svg{width:32px;height:32px;grid-row:1/3}.sports button span{font-size:16px;font-weight:650}.sports button small{font-size:12px;line-height:1.7;color:var(--muted)}.sports button[aria-pressed=true]{background:var(--ink);color:var(--white)}.sports button[aria-pressed=true] small{color:#c2d3c2}.sports button[aria-pressed=true] svg{color:var(--accent)}.sports button:hover:not([aria-pressed=true]){background:#e8ebde}.arena{border:1px solid #bac6b7;background:var(--white);border-radius:12px;overflow:hidden}.arena-top{display:flex;justify-content:space-between;align-items:center;padding:22px 28px;border-bottom:1px solid var(--line);gap:16px}.arena-top h2{font-size:21px;margin:0 0 6px;letter-spacing:-.02em}.arena-top p{font-size:13px;margin:0;color:var(--muted)}.mode-switch{display:flex;padding:4px;background:#eeefe7;border-radius:7px}.mode-switch button{padding:8px 15px;background:transparent;border-radius:4px;font-size:12px}.mode-switch button[aria-pressed=true]{background:var(--ink);color:var(--white)}.game-layout{display:grid;grid-template-columns:minmax(0,1fr) 260px}.play-column{min-width:0;border-right:1px solid var(--line)}.scoreboard{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--ink);color:var(--white);padding:18px 28px}.scoreboard>div{min-width:90px}.scoreboard span{display:block;color:#c5d0bd;font-size:12px}.scoreboard strong{display:block;font:27px/1.3 Score,monospace;font-variant-numeric:tabular-nums;margin-top:3px}.scoreboard strong span{display:inline;font:16px Score,monospace;color:#c5d0bd}.scoreboard .scoreboard-center{text-align:center}.scoreboard-center span{font-size:12px;letter-spacing:.13em}.scoreboard-center strong{font:11px/1.8 Score,monospace}.remaining{text-align:right}.field-wrap{position:relative;background:var(--field);aspect-ratio:1000/650;overflow:hidden}canvas{display:block;width:100%;height:100%;touch-action:none}.opening{position:absolute;inset:0;background:#102f26bb;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--white)}.opening h3{font:normal clamp(28px,3.4vw,45px)/1.15 var(--display);letter-spacing:-.03em;max-width:450px;margin:12px 0 24px;text-wrap:balance}.opening p{font-size:12px;color:#dfebd7;margin:0}.primary-button{display:inline-flex;align-items:center;justify-content:center;gap:36px;background:var(--accent);color:var(--ink);font-weight:700;font-size:14px;padding:15px 24px;border-radius:5px;min-height:48px}.primary-button:hover{background:#c4e259}.opening .opening-hint{font-size:12px;margin-top:16px;color:#c9dbbd}.field-badge{position:absolute;top:18px;left:22px;color:#e3efcf;font-size:12px;letter-spacing:.18em;pointer-events:none}.pause-button{position:absolute;right:15px;top:12px;background:#102a24;color:#f2f5d9;border-radius:50%;width:35px;height:35px;padding:7px}.pause-button:hover{background:#2d6653}.callout{position:absolute;top:39%;width:100%;text-align:center;pointer-events:none;font:italic 42px/1.1 var(--display);color:#fffbd6;text-shadow:0 3px 10px #10251e;transition:opacity .2s}.controls{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px 24px;background:#eff1e5}.action-instructions strong{display:block;font-size:13px;line-height:1.5}.action-instructions>span{display:block;font-size:12px;color:#586855;line-height:1.8}kbd{font-family:inherit;font-size:12px;border:1px solid #a2af96;border-radius:3px;padding:1px 4px;background:#fcfff0}.action-button{background:var(--ink);color:#f4f8df;display:flex;align-items:center;justify-content:center;gap:25px;min-width:130px;min-height:48px;padding:12px 20px;border-radius:5px;font-weight:650;font-size:14px;touch-action:none;user-select:none}.action-button:hover:not(:disabled),.action-button.is-held{background:#32634c}.aim-controls{display:flex;align-items:center;gap:15px;padding:2px 24px 18px;background:#eff1e5;font-size:12px}.aim-controls label{font-weight:700}.aim-controls label span{display:block;font-weight:400;color:#586855;min-width:45px}.aim-controls input{width:100%;accent-color:#24573f;min-width:40px;height:28px;cursor:pointer}.aim-controls>span{white-space:nowrap;color:#586855}.sideline{padding:26px 24px}.sideline-heading{display:flex;align-items:center;gap:7px}.sideline h3{font-size:12px;margin:0}.live-dot{width:6px;height:6px;background:#2e7452;border-radius:50%}.game-plan{font-size:12px;line-height:1.8;color:#52644e;margin:18px 0 22px;max-width:65ch}.target-note{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:17px 0}.target-note span,.personal-best span{display:block;font-size:12px;color:var(--muted);margin-bottom:7px}.target-note strong{font-size:13px;line-height:1.5}.how-to{margin-top:24px}.how-to h4{font:normal 20px/1.2 var(--display);margin:0 0 14px}.timing-demo{height:12px;background:#e7eadb;position:relative;border-radius:3px}.timing-demo span{position:absolute;left:44%;width:12%;height:100%;background:#7c9a3c}.timing-demo i{position:absolute;left:50%;height:20px;top:-4px;width:2px;background:#213f2c}.how-to p{font-size:12px;line-height:1.8;color:#52644e;margin:12px 0 0}.personal-best{margin-top:25px;display:flex;justify-content:space-between;align-items:center}.personal-best strong{font:24px Score,monospace}.personal-best svg{width:30px;height:30px;color:#71894f}.storage-note{font-size:12px;line-height:1.7;color:var(--muted)}.text-button{font-size:12px;display:flex;justify-content:space-between;width:100%;padding:15px 0 0;margin-top:16px;background:none;border-top:1px solid var(--line)}.text-button:hover:not(:disabled){color:#ad3b20}.result{display:flex;justify-content:space-between;gap:24px;align-items:center;background:#e6efcf;padding:25px 28px;border-top:1px solid #bdcbaa}.result>div>span{font-size:12px}.result h3{font:normal 30px var(--display);letter-spacing:-.02em;margin:7px 0}.result p{font-size:12px;line-height:1.6;margin:0}.result-actions{display:flex;gap:12px;flex-shrink:0}.result .quiet-button{min-height:48px}footer{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:25px 0 35px;font-size:12px;color:var(--muted)}footer>span{font:italic 17px var(--display);color:var(--ink)}footer p{margin:0;font-size:12px}footer a{text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(min-width:1400px){main{padding:0 48px}.field-wrap{max-height:510px}}
+@media(max-width:1000px){main{padding:0 26px}.masthead{padding:20px 26px}.game-layout{grid-template-columns:minmax(0,1fr) 220px}.sideline{padding:22px 18px}.sports button{padding:18px 12px;column-gap:8px}.sports button small{font-size:12px}.intro p{font-size:12px}.scoreboard{padding:15px 20px}.controls{padding:16px}.action-instructions strong{font-size:12px}.action-button{min-width:110px;gap:12px}}
+@media(max-width:720px){.masthead{padding:16px 18px}.wordmark{font-size:34px}.brand-note{display:none}main{padding:0 14px}.intro{display:block;padding:26px 3px 22px}.intro h1{font-size:30px}.intro p{margin-top:9px}.sports{margin-bottom:20px}.sports button{display:flex;flex-direction:column;gap:6px;text-align:center;padding:13px 3px}.sports button svg{width:26px;height:26px}.sports button span{font-size:12px}.sports button small{display:none}.arena-top{padding:18px 16px;align-items:flex-start}.arena-top h2{font-size:17px;line-height:1.3}.arena-top p{font-size:12px;line-height:1.5;max-width:180px}.mode-switch button{padding:8px 9px;font-size:12px}.mode-switch{padding:3px;flex-shrink:0}.game-layout{display:block}.play-column{border-right:0}.scoreboard{padding:13px 16px}.scoreboard>div{min-width:65px}.scoreboard strong{font-size:23px}.scoreboard strong span{font-size:13px}.scoreboard span{font-size:12px}.scoreboard-center span{font-size:12px;letter-spacing:.07em}.scoreboard-center strong{font-size:12px}.field-wrap{aspect-ratio:1.3}.opening h3{font-size:32px;margin:12px 0 20px}.opening p{font-size:12px}.field-badge{font-size:12px;left:15px;top:15px}.opening .opening-hint{font-size:12px}.controls{gap:8px;padding:14px 12px}.action-instructions strong{font-size:12px;max-width:195px}.action-instructions>span{font-size:12px}.action-button{min-width:92px;min-height:48px;gap:8px;font-size:12px;padding:12px}.aim-controls{padding:0 14px 14px;gap:8px}.aim-controls>span{font-size:12px}.sideline{border-top:1px solid var(--line);display:grid;grid-template-columns:1fr 1fr;gap:0 22px;padding:20px 16px}.sideline-heading{grid-column:1}.game-plan{grid-column:1;grid-row:2/5;font-size:12px;margin:12px 0 0}.target-note{grid-column:2;grid-row:1/3;border:0;padding:0}.target-note strong{font-size:12px}.target-note span{font-size:12px}.how-to{grid-column:1/3;margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}.how-to h4{font-size:19px}.how-to p{font-size:12px}.personal-best{grid-column:2;grid-row:3/5;margin-top:15px}.personal-best svg{width:25px}.storage-note{grid-column:1/3;margin-bottom:0}.text-button{grid-column:1/3;margin-top:10px;padding-top:12px}.result{display:block;padding:22px 16px}.result h3{font-size:28px}.result-actions{margin-top:20px}.result-actions .primary-button{flex:1}footer{flex-wrap:wrap;padding:23px 3px;gap:15px}footer p{order:3;flex-basis:100%;font-size:12px}footer>span{font-size:15px}footer a{font-size:12px}.callout{font-size:32px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+
+/* Reading and touch targets stay legible on compact displays. */
+.game-plan,.how-to p{font-size:14px;line-height:1.75}.storage-note{font-size:12px}.scoreboard-center span{letter-spacing:.06em}.mode-switch button{min-height:40px}.sports button{min-height:60px}
+@media(max-width:720px){.game-plan,.how-to p{font-size:13px}.scoreboard .scoreboard-center{min-width:0;max-width:112px}.scoreboard-center span{font-size:11px;line-height:1.4}.scoreboard-center strong{font-size:11px}.target-note{padding-top:2px}.action-instructions strong{font-size:12px}.action-instructions>span{font-size:11px}.arena-top p{font-size:12px}.mode-switch button{font-size:11px}footer p,footer a{font-size:11px}}
+
+.about{border-top:1px solid var(--line);padding:18px 0 30px;font-size:13px;line-height:1.8;color:var(--muted)}.about summary{cursor:pointer;color:var(--ink);font-weight:600}.about p{max-width:75ch}.result p{overflow-wrap:anywhere}
+
+/* Attempt history, shot labels, callouts and result moments. */
+.history-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--ink);padding:0 28px 12px;min-height:26px}
+.history{display:flex;flex-wrap:wrap;align-items:center;gap:7px;list-style:none;margin:0;padding:0;min-height:14px}
+.history li{width:11px;height:11px;border-radius:50%;border:1.5px solid #5d7a6c;background:transparent;flex-shrink:0}
+.history li.is-good{background:#f2f5d9;border-color:#f2f5d9}
+.history li.is-perfect{background:var(--accent);border-color:var(--accent);border-radius:2px;transform:rotate(45deg) scale(.9)}
+.history li.is-miss{border-color:#e07a55;background:none;border-radius:2px;height:3px;width:11px;border-width:0;background:#e07a55}
+.history li.is-new{animation:dot-in .35s cubic-bezier(.2,1.6,.4,1)}
+.history li.is-perfect.is-new{animation:dot-in-perfect .4s cubic-bezier(.2,1.6,.4,1)}
+.streak-chip{font:12px/1 Score,monospace;color:var(--ink);background:var(--accent);padding:4px 8px;border-radius:4px;white-space:nowrap;animation:chip-in .3s ease-out}
+.shot-label{position:absolute;top:16px;left:50%;transform:translateX(-50%);max-width:calc(100% - 260px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#102a24e6;color:#f2f5d9;font-size:12px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;padding:7px 12px;border-radius:4px;border:1px solid #4d7a5f;pointer-events:none;animation:label-in .3s ease-out}
+.callout{display:flex;flex-direction:column;align-items:center;gap:8px;opacity:0}
+.callout-main{display:block;transform-origin:50% 60%}
+.callout-sub{display:block;font:600 15px/1.2 "Helvetica Neue",Arial,sans-serif;font-style:normal;letter-spacing:.12em;text-transform:uppercase;color:#e3efcf}
+.callout-sub:empty{display:none}
+.callout.is-good .callout-main{animation:callout-pop .38s cubic-bezier(.2,1.5,.4,1)}
+.callout.is-perfect .callout-main{font-size:1.45em;color:var(--accent);animation:callout-perfect .55s cubic-bezier(.2,1.6,.35,1)}
+.callout.is-perfect .callout-sub{color:var(--accent)}
+.callout.is-miss .callout-main{color:#f3d9c9;font-size:.85em;animation:callout-miss .4s ease-out}
+.callout.is-streak .callout-sub{animation:chip-in .4s .12s ease-out both}
+#score.bump{animation:score-bump .45s ease-out}
+.pb-badge{display:inline-block;margin-left:10px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;background:var(--ink);color:var(--accent);padding:3px 8px;border-radius:4px;animation:pb-in .6s cubic-bezier(.2,1.6,.4,1) both}
+.result-run{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin-top:12px}
+.history-result{background:var(--ink);padding:7px 10px;border-radius:5px}
+.result .result-stats{font:12px/1.5 Score,monospace;color:#33473a}
+@keyframes dot-in{0%{transform:scale(0)}100%{transform:scale(1)}}
+@keyframes dot-in-perfect{0%{transform:rotate(45deg) scale(0)}100%{transform:rotate(45deg) scale(.9)}}
+@keyframes chip-in{0%{opacity:0;transform:translateY(6px)}100%{opacity:1;transform:none}}
+@keyframes label-in{0%{opacity:0;transform:translate(-50%,-8px)}100%{opacity:1;transform:translate(-50%,0)}}
+@keyframes callout-pop{0%{transform:scale(.55);opacity:0}60%{transform:scale(1.1);opacity:1}100%{transform:scale(1)}}
+@keyframes callout-perfect{0%{transform:scale(.35) rotate(-6deg);opacity:0}45%{transform:scale(1.18) rotate(2deg);opacity:1}70%{transform:scale(.96)}100%{transform:scale(1)}}
+@keyframes callout-miss{0%,100%{transform:translateX(0)}20%{transform:translateX(-9px)}40%{transform:translateX(7px)}60%{transform:translateX(-4px)}80%{transform:translateX(2px)}}
+@keyframes score-bump{0%{transform:scale(1)}35%{transform:scale(1.18);color:var(--accent)}100%{transform:scale(1)}}
+@keyframes label-in-left{0%{opacity:0;transform:translateY(-8px)}100%{opacity:1;transform:none}}
+@keyframes pb-in{0%{opacity:0;transform:scale(.6)}100%{opacity:1;transform:scale(1)}}
+#score{transform-origin:left center}
+@media(max-width:720px){.history-bar{padding:0 16px 10px}.history{gap:6px}.history li{width:10px;height:10px}.history li.is-miss{width:10px}.shot-label{top:12px;left:12px;transform:none;max-width:calc(100% - 70px);font-size:11px;padding:6px 10px;animation-name:label-in-left}.field-wrap.has-shot-label .field-badge{visibility:hidden}.callout-sub{font-size:12px}.pb-badge{margin:6px 0 0;display:table}}
+/* Round 2: soccer height, special shot labels, contested and clutch callouts. */
+.height-controls{padding-top:0}.height-controls label span.is-warning{color:#ad3b20;font-weight:700}
+.shot-label.is-money,.shot-label.is-clutch{background:var(--accent);color:var(--ink);border-color:var(--accent)}
+.shot-label.is-closeout{border-color:#e07a55}
+.field-wrap[data-scene=soccer] .callout{top:54%}
+/* Basketball: keep the rim and net clear; centre the callout over the floor (canvas y ≈ 405). */
+.field-wrap[data-scene=basketball] .callout{top:62%;transform:translateY(-50%)}
+.callout.is-contested .callout-sub{color:#f3b79c}
+@media(max-width:720px){.height-controls{padding-top:0}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important}}
+</style>
+</head>
+<body>
+  <header class="masthead">
+    <a class="wordmark" href="#baseball" aria-label="Clutch home">clutch<span class="brand-dot">.</span></a>
+    <span class="brand-note">A little sport. A lot at stake.</span>
+    <button id="sound" class="quiet-button" aria-pressed="false">Sound off</button>
+  </header>
+  <main>
+    <div class="intro"><h1>The game is in your hands.</h1><p>Four sports. One more try.</p></div>
+    <nav class="sports" aria-label="Choose your sport">
+      <button data-sport="baseball" aria-pressed="true"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12"/><path d="M8 7c9 6 9 12 0 18M24 7c-9 6-9 12 0 18"/></svg><span>Baseball</span><small>Bottom of the ninth</small></button>
+      <button data-sport="basketball" aria-pressed="false"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12"/><path d="M4 16h24M16 4v24M8 7c9 6 9 12 0 18M24 7c-9 6-9 12 0 18"/></svg><span>Basketball</span><small>Beat the buzzer</small></button>
+      <button data-sport="tennis" aria-pressed="false"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12"/><path d="M5 11c11-4 19 4 16 16M11 5c-4 11 4 19 16 16"/></svg><span>Tennis</span><small>Keep the rally alive</small></button>
+      <button data-sport="soccer" aria-pressed="false"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12"/><path d="m16 10 6 4-2 7h-8l-2-7zM16 10V4M22 14l6-2M20 21l4 5M12 21l-4 5M10 14l-6-2"/></svg><span>Soccer</span><small>Own the penalty spot</small></button>
+    </nav>
+    <section class="arena" aria-labelledby="game-title">
+      <div class="arena-top"><div><h2 id="game-title">Bottom of the ninth</h2><p id="challenge-copy">Hit 4 home runs in 10 pitches.</p></div><div class="mode-switch" role="group" aria-label="Challenge mode"><button id="daily" aria-pressed="true">Daily</button><button id="practice" aria-pressed="false">Practice</button></div></div>
+      <div class="game-layout">
+        <div class="play-column">
+          <div class="scoreboard"><div><span id="score-label">Home runs</span><strong id="score">0<span> / 4</span></strong></div><div class="scoreboard-center"><span id="mode-label">DAILY CHALLENGE</span><strong id="day-label"></strong></div><div class="remaining"><span id="remaining-label">Pitches left</span><strong id="remaining">10</strong></div></div>
+          <div class="history-bar"><ol id="history" class="history" aria-label="Attempt history: none yet"></ol><span id="streak-chip" class="streak-chip" hidden></span></div>
+          <div class="field-wrap" id="field-wrap">
+            <canvas id="field" width="1000" height="650" tabindex="0" aria-label="Baseball game. Press Space to swing when the pitch reaches the plate."></canvas>
+            <div id="opening" class="opening"><div><p id="opening-detail">Ten pitches. Make them count.</p><h3 id="opening-title">Step up to the plate.</h3><button id="start" class="primary-button">Play baseball <span aria-hidden="true">↗</span></button><p class="opening-hint">No sign-up. Just play.</p></div></div>
+            <div id="pause-overlay" class="opening" hidden><div><h3>Take a breather.</h3><button id="resume" class="primary-button">Resume game</button></div></div>
+            <div class="field-badge" id="field-badge">THE DIAMOND</div>
+            <button class="pause-button" id="pause" aria-label="Pause game" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg></button>
+            <div class="shot-label" id="shot-label" aria-hidden="true" hidden></div>
+            <div class="callout" id="callout" aria-hidden="true"><span id="callout-main" class="callout-main"></span><span id="callout-sub" class="callout-sub"></span></div>
+          </div>
+          <div class="controls"><div class="action-instructions"><strong id="instruction">Watch the pitch. Time your swing.</strong><span id="input-hint"><kbd>Space</kbd> or tap Swing</span></div><button id="action" class="action-button" disabled>Swing <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 19 14-14M9 5h10v10"/></svg></button></div>
+          <div id="aim-controls" class="aim-controls" hidden><label for="aim">Aim <span id="aim-label">Centre</span></label><input id="aim" type="range" min="-1" max="1" step="0.02" value="0" aria-label="Aim left or right"><span>← Left · Right →</span></div>
+          <div id="height-controls" class="aim-controls height-controls" hidden><label for="aim-height">Height <span id="height-label">Low</span></label><input id="aim-height" type="range" min="0" max="1" step="0.02" value="0.3" aria-label="Shot height, from along the ground to the top corner"><span>↓ Low · High ↑</span></div>
+          <p id="live-status" class="sr-only" role="status" aria-live="polite"></p>
+        </div>
+        <aside class="sideline">
+          <div class="sideline-heading"><span class="live-dot"></span><h3>Your game plan</h3></div>
+          <p id="game-plan" class="game-plan">Read the pitch, wait for the ball, and swing as it reaches the plate. A clean connection sends it over the fence.</p>
+          <div class="target-note"><span>The challenge</span><strong id="target-note">4 home runs. 10 pitches.</strong></div>
+          <div class="how-to"><h4 id="mechanic-title">It's all in the timing.</h4><div class="timing-demo" aria-hidden="true"><span></span><i></i></div><p id="mechanic-copy">The narrow green zone is your sweet spot. Early or late swings stay in the park.</p></div>
+          <div class="personal-best"><div><span id="best-label">Your best today</span><strong id="best">—</strong></div><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 5h12v8a6 6 0 0 1-12 0zM10 8H5v3a6 6 0 0 0 6 6M22 8h5v3a6 6 0 0 1-6 6M16 19v7M10 27h12"/></svg></div>
+          <p class="storage-note" id="storage-note">Personal bests stay on this device.</p>
+          <button id="restart" class="text-button" disabled>Restart challenge <span aria-hidden="true">↻</span></button>
+        </aside>
+      </div>
+      <div id="result" class="result" hidden><div><span id="result-outcome">Challenge complete</span><span id="result-pb" class="pb-badge" hidden>New personal best</span><h3 id="result-title"></h3><p id="result-copy"></p><div class="result-run"><ol id="result-history" class="history history-result" aria-label="Attempt history"></ol><p id="result-stats" class="result-stats"></p></div></div><div class="result-actions"><button id="replay" class="primary-button">Play again</button><button id="share" class="quiet-button">Copy result</button></div></div>
+    </section>
+    <footer><span>Small games. Big moments.</span><p id="footer-note">A fresh daily challenge at midnight UTC. Practice whenever you like.</p><a href="#about">About this prototype <span aria-hidden="true">↗</span></a></footer>
+    <details id="about" class="about"><summary>About Clutch</summary><p>Four original, short arcade sports challenges. These are simplified sports games, with personal bests saved on this device and no public leaderboard. The same game code is packaged for standalone web and Reddit. Clutch is a working prototype name.</p><p>Keyboard: choose a sport and press Play, then use Space for the main action. In basketball, hold and release Space. In tennis, use the left and right arrow keys or the aim slider. In soccer, left and right aim across the goal and up and down set the height; the Aim and Height sliders do the same. Escape pauses the game. On touch screens, use the action button and sliders, or tap the goal in soccer to pick a spot.</p><p>These games include visual timing and aiming challenges. They do not yet offer equivalent nonvisual gameplay.</p></details>
+  </main>
+  <script type="module">
+const SPORTS = {
+  baseball: { title: 'Bottom of the ninth', challenge: 'Hit 4 home runs in 10 pitches.', target: 4, attempts: 10, unit: 'home runs', scoreLabel: 'Home runs', remaining: 'Pitches left', action: 'Swing', badge: 'THE DIAMOND', opening: 'Step up to the plate.', detail: 'Ten pitches. Make them count.', instruction: 'Read the pitch. Time your swing.', hint: 'Space or tap Swing', plan: 'Fastballs arrive quickly, changeups float in late, and curveballs break late across the plate. Swing as the ball reaches the plate. Only a perfect connection clears the fence. Good contact stays in the park.', mechanic: "It's all in the timing.", help: 'Swing when the ball reaches the plate. The green zone marks perfect contact. Two home runs in a row widens it a little.', targetNote: '4 home runs. 10 pitches.' },
+  basketball: { title: 'Beat the buzzer', challenge: 'Score 16 points in 8 shots.', target: 16, attempts: 8, unit: 'points', scoreLabel: 'Points', remaining: 'Shots left', action: 'Hold to shoot', badge: 'THE HARDWOOD', opening: 'Find your shooting touch.', detail: 'Eight shots. Nothing but net.', instruction: 'Hold to build power. Release in the green.', hint: 'Hold Space or hold the button', plan: 'Hold the shot button to charge, then release in the green zone. Shots from inside the arc are worth two and forgive more. Threes are worth three, with a narrower zone and a faster meter. When a defender closes out, start your hold right away: a release after they arrive is contested. The last shot is a money ball worth double.', mechanic: 'Find your release.', help: 'Each shot comes from a different spot. Deeper spots move the green zone up, narrow it, and charge faster. A closing defender halves the green zone if they arrive before you release. Two makes in a row widens it. The final shot counts double.', targetNote: '16 points. 8 shots.' },
+  tennis: { title: 'Keep the rally alive', challenge: 'Build a 10-shot rally with 3 lives.', target: 10, unit: 'shot rally', scoreLabel: 'Best rally', remaining: 'Lives left', action: 'Return', badge: 'CENTRE COURT', opening: 'Make the next shot count.', detail: 'Find a rhythm. Hold the line.', instruction: 'Time your return. Aim away from your opponent.', hint: 'Space to return · arrows to aim', plan: 'Return the ball as it reaches your baseline. Flat drives come fast. Topspin sits up and is easier to time. From the eighth return the opponent turns to a pressure slice: slow, but with a very narrow window. Aim away from the opponent for a wider timing window.', mechanic: 'Rhythm meets placement.', help: 'Use the aim slider or arrow keys. Returning toward the opponent narrows your timing window. The ball speeds up as your rally grows, and the last returns of a 10-shot rally are pressure slices.', targetNote: '10-shot rally. 3 lives.' },
+  soccer: { title: 'Own the penalty spot', challenge: 'Score 4 goals from 5 penalties.', target: 4, attempts: 5, unit: 'goals', scoreLabel: 'Goals', remaining: 'Kicks left', action: 'Shoot', badge: 'THE PENALTY SPOT', opening: 'Pick your corner.', detail: 'Five penalties. Keep your nerve.', instruction: 'Read the keeper. Shoot the other way.', hint: 'Space to shoot · arrows aim and lift', plan: 'Each keeper has a habit. Some lean before they dive, then dive early. Others sway on the line. Some drift toward a corner you hold your aim on. Wait for the tell, then shoot the other way. Aim high: keepers reach low shots more easily. Too close to the posts goes wide, and too high goes over the bar. The fifth kick is sudden pressure, with a shorter clock.', mechanic: 'Send the keeper the wrong way.', help: 'A keeper standing in the middle covers almost the whole goal. An early diver leans first and then dives. A swaying keeper leaves the far corner open. A keeper who reads your aim follows it while it stays still, so switch corners and shoot quickly. Set the height with the up and down arrows or the height slider. Low shots are easier to save; high shots near a post are the best finish.', targetNote: '4 goals. 5 penalties.' }
+};
+
+// Default flight length in seconds. Each settled result sets game.flightDuration, which may differ.
+const FLIGHT_SECONDS = 1.2;
+// Consecutive successes needed to make an attempt "hot", and the window bonus that follows.
+const HOT_STREAK = 2;
+const HOT_WINDOW_BONUS = 1.15, BASEBALL_HOT_BONUS = 1.08;
+
+// Windows are in seconds of error around the ideal moment.
+const PITCH_TYPES = {
+  fastball: { label: 'Fastball', duration: [1.25, 1.45], lane: [.15, .35], perfect: .023, good: .12 },
+  changeup: { label: 'Changeup', duration: [2.0, 2.3], lane: [.2, .45], perfect: .026, good: .14 },
+  curveball: { label: 'Curveball', duration: [1.65, 1.85], lane: [1, 1.35], perfect: .025, good: .13 }
+};
+const PITCH_BAG = ['fastball', 'fastball', 'fastball', 'fastball', 'changeup', 'changeup', 'changeup', 'curveball', 'curveball', 'curveball'];
+// Power-meter units. `charge` is the seconds to reach full power.
+const SHOT_SPOTS = {
+  paint: { label: 'Paint jumper', points: 2, target: .4, lane: .2, charge: 1.5, perfect: .024, good: .056 },
+  elbow: { label: 'Elbow jumper', points: 2, target: .52, lane: .55, charge: 1.4, perfect: .022, good: .05 },
+  corner: { label: 'Corner three', points: 3, target: .62, lane: 1, charge: 1.3, perfect: .017, good: .039 },
+  top: { label: 'Top of the key three', points: 3, target: .7, lane: .1, charge: 1.25, perfect: .015, good: .035 }
+};
+const SPOT_BAG = ['paint', 'paint', 'elbow', 'elbow', 'corner', 'corner', 'top', 'top'];
+// `speed` multiplies the incoming duration; `window` is the timing half-window in seconds when aimed away.
+// From rally PRESSURE_RALLY the opponent only hits the low slice, so a rally is earned on its last shots.
+const SPIN_TYPES = {
+  flat: { label: 'Flat drive', speed: .84, window: .12 },
+  topspin: { label: 'Heavy topspin', speed: 1, window: .15 },
+  slice: { label: 'Pressure slice', speed: 1.2, window: .034 }
+};
+const PRESSURE_RALLY = 8;
+const KEEPER_TYPES = {
+  early: { label: 'Keeper dives early' },
+  sway: { label: 'Keeper sways on the line' },
+  reader: { label: 'Keeper reads your aim' }
+};
+const KEEPER_BAG = ['early', 'early', 'sway', 'reader', 'reader'];
+// A standing keeper's sideways dive reach shrinks with shot height: KEEPER_REACH - KEEPER_REACH_HIGH * aimY.
+const KEEPER_REACH = .81, KEEPER_REACH_HIGH = .12, KEEPER_BODY = .24, KEEPER_DIVE_BODY = .32, POST_LIMIT = .92;
+const EARLY_LEAN = .4, EARLY_DOWN = .17, EARLY_RISE = .2, EARLY_CYCLE = 2.3;
+const READER_SETTLE = .15, READER_SPEED = 1.5, READER_LIMIT = .62;
+const KICK_CLOCK = 6, CLUTCH_CLOCK = 3.5, BAR_LIMIT = .92, DEFAULT_AIM_Y = .3, KEEPER_HANDS = .85;
+// Basketball: a defender closing out halves both windows; the last shot is a money ball for double points.
+const CONTEST_FACTOR = .5, CLOSEOUT_SLACK = [.22, .46], CLOSEOUT_BAG = [1, 1, 1, 1, 0, 0, 0];
+
+function randomFromSeed(seed) {
+  let value = 2166136261;
+  for (const char of String(seed)) value = Math.imul(value ^ char.charCodeAt(0), 16777619);
+  return () => {
+    value += 0x6D2B79F5;
+    let t = Math.imul(value ^ value >>> 15, 1 | value);
+    t ^= t + Math.imul(t ^ t >>> 7, 61 | t);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function utcDay(date = new Date()) { return date.toISOString().slice(0, 10); }
+const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+const drawBetween = (random, [low, high]) => low + random() * (high - low);
+
+function shuffledBag(bag, random) {
+  const items = [...bag];
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [items[i], items[j]] = [items[j], items[i]];
+  }
+  return items;
+}
+
+function createGame(sport, seed) {
+  if (!Object.hasOwn(SPORTS, sport)) throw new Error('Unknown sport');
+  const random = randomFromSeed(`${sport}:${seed}`);
+  const plan = { baseball: PITCH_BAG, basketball: SPOT_BAG, soccer: KEEPER_BAG }[sport];
+  const closeouts = sport === 'basketball' ? [0, ...shuffledBag(CLOSEOUT_BAG, random)] : [];
+  return { sport, seed, random, phase: 'ready', score: 0, used: 0, lives: 3, rally: 0, aim: 0, aimY: DEFAULT_AIM_Y, time: 0, holdStart: null, closeouts, shotTime: 0, flightDuration: FLIGHT_SECONDS, feedback: '', result: null, holding: false, power: 0, streak: 0, bestStreak: 0, history: [], shot: null, plan: plan ? shuffledBag(plan, random) : [], next: null };
+}
+
+// Every attempt draws the same number of random values, so a daily setup never depends on how the player did.
+function nextAttempt(game) {
+  game.phase = 'playing';
+  game.time = 0;
+  game.holding = false;
+  game.power = 0;
+  game.holdStart = null;
+  game.result = null;
+  const r = Array.from({ length: 6 }, game.random);
+  const side = r[1] < .5 ? -1 : 1;
+  const hot = game.streak >= HOT_STREAK;
+  const shot = { kind: '', label: '', hot, duration: 1.65 + r[0] * .6, lane: (r[1] - .5) * 1.4, target: .38 + r[2] * .34, opponent: (r[3] - .5) * 1.5, keeperPhase: r[4] * Math.PI * 2, keeperSpeed: 3.1 + r[5] * .5, jitter: r[5] };
+  if (game.sport === 'baseball') {
+    const pitch = PITCH_TYPES[game.plan[game.used % game.plan.length]];
+    Object.assign(shot, { kind: game.plan[game.used % game.plan.length], label: pitch.label, duration: drawBetween(() => r[0], pitch.duration), lane: side * drawBetween(() => r[2], pitch.lane) });
+    shot.window = { perfect: pitch.perfect * (hot ? BASEBALL_HOT_BONUS : 1) / shot.duration, good: pitch.good / shot.duration };
+  } else if (game.sport === 'basketball') {
+    const kind = game.plan[game.used % game.plan.length], spot = SHOT_SPOTS[kind];
+    Object.assign(shot, { kind, label: spot.label, points: spot.points, charge: spot.charge, lane: side * spot.lane * (.8 + r[2] * .2), target: spot.target + (r[0] - .5) * .06 });
+    shot.window = { perfect: spot.perfect * (hot ? HOT_WINDOW_BONUS : 1), good: spot.good * (hot ? HOT_WINDOW_BONUS : 1) };
+    shot.money = game.used === SPORTS.basketball.attempts - 1;
+    if (game.closeouts[game.used]) { shot.closeout = shot.target * shot.charge + drawBetween(() => r[3], CLOSEOUT_SLACK); shot.label += ' · Closeout'; }
+    if (shot.money) shot.label = `Money ball · double points · ${shot.label}`;
+  } else if (game.sport === 'tennis') {
+    const kind = game.rally >= PRESSURE_RALLY ? 'slice' : r[0] < .5 ? 'topspin' : 'flat';
+    Object.assign(shot, { kind, label: SPIN_TYPES[kind].label, spin: SPIN_TYPES[kind].window, duration: Math.max(.85, 2.05 - game.rally * .08) * SPIN_TYPES[kind].speed, lane: (r[1] - .5) * 1.4 });
+  } else {
+    const kind = game.plan[game.used % game.plan.length];
+    const clutch = game.used === SPORTS.soccer.attempts - 1;
+    Object.assign(shot, { kind, label: clutch ? `Sudden pressure · ${KEEPER_TYPES[kind].label}` : KEEPER_TYPES[kind].label, clutch, duration: clutch ? CLUTCH_CLOCK : KICK_CLOCK, side, commitAt: 1 + r[2] * .8, keeperX: 0, aimSeen: game.aim, still: 0 });
+  }
+  game.shot = shot;
+}
+
+function earlyKeeper(shot, time) {
+  const cycle = Math.max(0, Math.floor((time - shot.commitAt + EARLY_LEAN) / EARLY_CYCLE));
+  const local = time - shot.commitAt - cycle * EARLY_CYCLE;
+  const side = shot.side * (cycle % 2 ? -1 : 1);
+  const idle = Math.sin(time * 4.2) * .05;
+  if (local < -EARLY_LEAN) return { x: idle, committed: false, lean: 0, dive: null };
+  if (local < 0) { const lean = (local + EARLY_LEAN) / EARLY_LEAN; return { x: side * .18 * lean, committed: false, lean: side * lean, dive: null }; }
+  if (local < EARLY_DOWN) return { x: side * (.18 + .52 * Math.min(1, local / .2)), committed: true, lean: side, dive: side * .7 };
+  if (local < EARLY_DOWN + EARLY_RISE) return { x: side * .7 * (1 - (local - EARLY_DOWN) / EARLY_RISE), committed: false, lean: 0, dive: null };
+  return { x: idle, committed: false, lean: 0, dive: null };
+}
+
+// Where the keeper is now: x (-1..1), whether they have already committed to a dive, and a lean (-1..1) tell.
+function keeperPose(game) {
+  const shot = game.shot;
+  if (!shot) return { x: 0, committed: false, lean: 0, dive: null };
+  if (shot.kind === 'early') return earlyKeeper(shot, game.time);
+  if (shot.kind === 'reader') return { x: shot.keeperX, committed: false, lean: clamp(shot.keeperX / READER_LIMIT, -1, 1) * (shot.still > READER_SETTLE ? 1 : 0), dive: null };
+  const x = Math.sin(game.time * shot.keeperSpeed + shot.keeperPhase) * .25;
+  return { x, committed: false, lean: Math.cos(game.time * shot.keeperSpeed + shot.keeperPhase), dive: null };
+}
+function keeperPosition(game) { return game.shot ? keeperPose(game).x : 0; }
+
+// The outcome of a penalty struck now at (`aim`, `aimY`), without taking the shot.
+// Low shots are easier to reach; high shots near a post are the best finish; above BAR_LIMIT is over the bar.
+function penaltyCall(game, aim = game.aim, aimY = game.aimY ?? DEFAULT_AIM_Y) {
+  const pose = keeperPose(game);
+  const wide = Math.abs(aim) > POST_LIMIT, over = !wide && aimY > BAR_LIMIT;
+  const reach = KEEPER_REACH - KEEPER_REACH_HIGH * clamp(aimY, 0, 1);
+  const dive = pose.committed ? pose.dive : clamp(pose.x + clamp(aim - pose.x, -reach, reach), -1, 1);
+  const margin = Math.abs(aim - dive) - (pose.committed ? KEEPER_DIVE_BODY : KEEPER_BODY);
+  const onTarget = !wide && !over;
+  return { wide, over, saved: onTarget && margin < 0, goal: onTarget && margin >= 0, dive, diveY: pose.committed ? .4 : Math.min(KEEPER_HANDS, clamp(aimY, 0, 1)), margin, keeper: pose.x, committed: pose.committed };
+}
+
+// Basketball: whether a release now would be contested, and the windows that would apply.
+function isContested(game) { return Number.isFinite(game.shot?.closeout) && game.time >= game.shot.closeout; }
+function shotWindow(game) {
+  const window = game.shot?.window ?? { perfect: 0, good: 0 }, factor = isContested(game) ? CONTEST_FACTOR : 1;
+  return { perfect: window.perfect * factor, good: window.good * factor };
+}
+
+function timing(game) { return game.time / game.shot.duration; }
+function tennisWindow(game) {
+  if (!game.shot) return .065;
+  const placement = .6 + .4 * Math.min(1, Math.abs(game.aim - (game.shot.opponent ?? 0)));
+  return (game.shot.spin ?? SPIN_TYPES.flat.window) * placement / game.shot.duration;
+}
+
+function startGame(game) {
+  if (game.phase !== 'ready') return;
+  nextAttempt(game);
+}
+
+function flightFor(sport, result) {
+  if (sport === 'baseball') return result.quality === 'perfect' ? 1.6 : result.contact ? 1.25 : .85;
+  if (sport === 'basketball') return result.success ? 1.15 : 1;
+  if (sport === 'tennis') return result.success ? 1 : 1.1;
+  return result.success ? 1.3 : 1.1;
+}
+
+function settle(game, result) {
+  result.quality ??= result.success ? 'good' : 'miss';
+  result.kind = game.shot?.kind;
+  game.used++;
+  game.result = result;
+  game.feedback = result.text;
+  game.history.push(result);
+  game.phase = 'flight';
+  game.shotTime = 0;
+  game.flightDuration = flightFor(game.sport, result);
+  game.holding = false;
+  if (result.success) { game.streak++; game.bestStreak = Math.max(game.bestStreak, game.streak); }
+  else game.streak = 0;
+  if (game.sport === 'tennis') {
+    if (result.success) { game.rally++; game.score = Math.max(game.score, game.rally); }
+    else { game.rally = 0; game.lives--; }
+  } else game.score += result.points;
+  return result;
+}
+
+function resolvePenalty(game, hurried = false) {
+  const call = penaltyCall(game);
+  const perfect = call.goal && (call.margin >= .4 || call.committed);
+  const text = call.wide ? 'Just wide!' : call.over ? 'Over the bar!' : call.saved ? 'Saved!' : perfect ? 'Sent the wrong way!' : 'Goal!';
+  return settle(game, { success: call.goal, points: call.goal ? 1 : 0, quality: perfect ? 'perfect' : call.goal ? 'good' : 'miss', text: hurried ? `Rushed. ${text}` : text, aim: game.aim, aimY: game.aimY ?? DEFAULT_AIM_Y, over: call.over, keeper: call.keeper, dive: call.dive, diveY: call.diveY });
+}
+
+function resolveSwing(game) {
+  const error = timing(game) - 1, size = Math.abs(error), window = game.shot.window;
+  if (size <= window.perfect) {
+    const distance = Math.round(408 + (1 - size / window.perfect) * 50 + game.shot.jitter * 14);
+    return settle(game, { success: true, points: 1, quality: 'perfect', text: distance >= 450 ? 'Moonshot!' : 'Home run!', error, contact: true, distance });
+  }
+  if (size <= window.good) {
+    const distance = Math.round(355 - (size - window.perfect) / (window.good - window.perfect) * 180 + game.shot.jitter * 12);
+    return settle(game, { success: false, points: 0, quality: 'good', text: distance >= 320 ? 'Off the wall!' : distance >= 240 ? 'Base hit' : error < 0 ? 'Pulled foul' : 'Grounder', error, contact: true, distance });
+  }
+  return settle(game, { success: false, points: 0, quality: 'miss', text: error < 0 ? 'Early swing!' : 'Strike!', error, contact: false });
+}
+
+function act(game) {
+  if (game.phase !== 'playing') return null;
+  if (game.sport === 'basketball') {
+    if (!game.holding) { game.holding = true; game.holdStart = game.time; game.power = 0; return null; }
+    return release(game);
+  }
+  if (game.sport === 'soccer') return resolvePenalty(game);
+  if (game.sport === 'baseball') return resolveSwing(game);
+  const error = timing(game) - 1, window = tennisWindow(game);
+  const success = Math.abs(error) <= window;
+  const perfect = success && Math.abs(error) <= window * .45;
+  return settle(game, { success, points: 0, quality: perfect ? 'perfect' : success ? 'good' : 'miss', text: perfect ? 'Clean return!' : success ? 'In play!' : error < 0 ? 'Too early!' : 'Too late!', aim: game.aim, error });
+}
+
+function release(game) {
+  if (game.sport !== 'basketball' || game.phase !== 'playing' || !game.holding) return null;
+  const shot = game.shot, error = Math.abs(game.power - shot.target), contested = isContested(game), window = shotWindow(game);
+  const success = error <= window.good, perfect = error <= window.perfect;
+  const points = success ? shot.points * (shot.money ? 2 : 1) : 0;
+  const text = perfect ? (shot.points === 3 ? 'Three. All net!' : 'Swish!') : success ? (shot.points === 3 ? 'Three points!' : 'Two points!') : game.power < shot.target ? 'A little short!' : 'Too much power!';
+  return settle(game, { success, points, quality: perfect ? 'perfect' : success ? 'good' : 'miss', text, error, contested, money: !!shot.money });
+}
+
+function advance(game, seconds) {
+  if (game.phase === 'playing') {
+    game.time += seconds;
+    if (game.sport === 'basketball') {
+      if (game.holding) {
+        const held = game.time - game.holdStart;
+        game.power = Math.min(1, held / game.shot.charge);
+        if (held >= game.shot.charge * 1.18) return release(game);
+      } else if (game.time > 8) return settle(game, { success: false, points: 0, text: 'Shot clock!', contested: false, money: !!game.shot.money });
+    } else if (game.sport === 'soccer') {
+      const shot = game.shot;
+      if (game.aim !== shot.aimSeen) { shot.aimSeen = game.aim; shot.still = 0; }
+      else shot.still += seconds;
+      if (shot.kind === 'reader' && shot.still > READER_SETTLE) {
+        const goal = clamp(game.aim * .8, -READER_LIMIT, READER_LIMIT), step = READER_SPEED * seconds;
+        shot.keeperX += clamp(goal - shot.keeperX, -step, step);
+      }
+      if (game.time >= shot.duration) return resolvePenalty(game, true);
+    } else if (timing(game) > 1.2) return settle(game, { success: false, points: 0, text: game.sport === 'tennis' ? 'Ball missed!' : 'Strike!', contact: false });
+  } else if (game.phase === 'flight') {
+    game.shotTime += seconds;
+    if (game.shotTime > game.flightDuration) {
+      const config = SPORTS[game.sport];
+      const complete = game.sport === 'tennis' ? game.lives <= 0 || game.score >= config.target : game.used >= config.attempts;
+      if (complete) game.phase = 'finished';
+      else nextAttempt(game);
+    }
+  }
+  return null;
+}
+
+function remaining(game) { return game.sport === 'tennis' ? game.lives : SPORTS[game.sport].attempts - game.used; }
+function won(game) { return game.score >= SPORTS[game.sport].target; }
+
+
+const W = 1000, H = 650;
+let ctx;
+
+// ---------------------------------------------------------------------------
+// Cosmetic effect state. Never stored on `game`; keyed by game identity and by
+// attempt count (history length), and reset whenever a new game object arrives.
+// Math.random is used here for visuals only.
+// ---------------------------------------------------------------------------
+const FX_MAX = 110;
+const fxParts = Array.from({ length: FX_MAX }, () => ({ live: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 1, w: 4, h: 7, color: '#d7ef79', spin: 0, rot: 0 }));
+const fxP = { x: 0, y: 0, r: 0, h: 0 };
+const fxState = { game: null, attempt: -1, burstDone: true, now: 0, last: 0, shakeAt: -9, shakePow: 0, cheerAt: -9, cheerPow: 0, ringAt: -9, ringX: 0, ringY: 0, ringQ: 'good' };
+const FX_CONFETTI = ['#d7ef79', '#f4f2e9', '#fffef7', '#c4e259'];
+const FX_SEATS = ['#67876c', '#486d57', '#8e9b6c'];
+let fxMotionQuery = null;
+
+function fxReduced() {
+  if (fxMotionQuery === null) {
+    try { fxMotionQuery = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)') || false; } catch { fxMotionQuery = false; }
+  }
+  return Boolean(fxMotionQuery && fxMotionQuery.matches);
+}
+function fxClock() { return (globalThis.performance?.now?.() ?? Date.now()) / 1000; }
+function fxEaseOut(t) { const u = 1 - clamp(t, 0, 1); return 1 - u * u * u; }
+function fxEaseInOut(t) { t = clamp(t, 0, 1); return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+function fxQuality(result) { return result?.quality ?? (result?.success ? 'good' : 'miss'); }
+// Zone half-widths: game.shot.window may be { perfect, good } or a number (good only).
+function fxZones(shot, good, perfect) {
+  const w = shot?.window;
+  if (w && typeof w === 'object') return [Number(w.good) || good, Number(w.perfect) || perfect];
+  if (Number.isFinite(w)) return [w, perfect];
+  return [good, perfect];
+}
+function fxDuration(game) { const d = game.flightDuration; return Number.isFinite(d) && d > 0 ? d : 1.2; }
+// Seconds into the payoff. In 'finished' the last flight is shown at rest.
+function fxFlightTime(game) { return game.phase === 'flight' ? game.shotTime || 0 : fxDuration(game); }
+function fxSettled(game) { return Boolean(game.result) && (game.phase === 'flight' || game.phase === 'finished'); }
+
+function fxSync(game) {
+  const now = fxClock();
+  const dt = fxState.last ? clamp(now - fxState.last, 0, .05) : 0;
+  fxState.now = now; fxState.last = now;
+  const attempt = Array.isArray(game.history) ? game.history.length : game.used || 0;
+  if (fxState.game !== game) {
+    fxState.game = game; fxState.attempt = attempt; fxState.burstDone = true;
+    fxState.shakeAt = fxState.cheerAt = fxState.ringAt = -9;
+    for (const p of fxParts) p.live = false;
+  } else if (attempt !== fxState.attempt) {
+    fxState.attempt = attempt; fxState.burstDone = false;
+  }
+  if (dt > 0) {
+    for (const p of fxParts) {
+      if (!p.live) continue;
+      p.life += dt;
+      if (p.life >= p.max) { p.live = false; continue; }
+      p.vy += 520 * dt; p.vx *= 1 - 1.4 * dt; p.vy *= 1 - .8 * dt;
+      p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.spin * dt;
+    }
+  }
+}
+function fxSpawn(x, y, count, colors, speed, up) {
+  let made = 0;
+  for (const p of fxParts) {
+    if (made >= count) break;
+    if (p.live) continue;
+    const angle = -Math.PI / 2 + (Math.random() - .5) * Math.PI * 1.5;
+    const v = speed * (.35 + Math.random() * .65);
+    p.live = true; p.x = x; p.y = y; p.life = 0; p.max = .8 + Math.random() * .9;
+    p.vx = Math.cos(angle) * v; p.vy = Math.sin(angle) * v - up;
+    p.w = 3 + Math.random() * 4; p.h = 5 + Math.random() * 5;
+    p.color = colors[(Math.random() * colors.length) | 0];
+    p.spin = (Math.random() - .5) * 18; p.rot = Math.random() * 6;
+    made++;
+  }
+}
+// Fires once per attempt, when a sport's payoff moment is reached.
+function fxImpact(x, y, game) {
+  if (fxState.burstDone || game.phase !== 'flight') return;
+  fxState.burstDone = true;
+  const quality = fxQuality(game.result), reduced = fxReduced(), now = fxState.now;
+  if (!game.result?.success) {
+    fxSpawn(x, y, reduced ? 2 : quality === 'miss' ? 7 : 14, ['#9fae8f', '#c9c3a6', '#e8e2c4'], quality === 'miss' ? 140 : 220, 20);
+    if (!reduced) { fxState.shakeAt = now; fxState.shakePow = 1.5; }
+    return;
+  }
+  const perfect = quality === 'perfect';
+  const streak = Number(game.streak) || 0;
+  let count = (perfect ? 64 : 24) + Math.min(streak, 5) * 4;
+  if (reduced) count = Math.round(count / 4);
+  fxSpawn(x, y, count, perfect ? FX_CONFETTI.concat('#e8894f') : FX_CONFETTI, perfect ? 480 : 300, perfect ? 120 : 60);
+  fxState.ringAt = now; fxState.ringX = x; fxState.ringY = y; fxState.ringQ = quality;
+  fxState.cheerAt = now; fxState.cheerPow = perfect ? 1 : .55;
+  if (!reduced) { fxState.shakeAt = now; fxState.shakePow = perfect ? 8 : 2.5; }
+}
+function fxCheer() { return fxState.cheerPow * Math.exp(-(fxState.now - fxState.cheerAt) * 1.5); }
+function fxShake() { return fxReduced() ? 0 : fxState.shakePow * Math.exp(-(fxState.now - fxState.shakeAt) * 9); }
+function fxDrawParticles() {
+  for (const p of fxParts) {
+    if (!p.live) continue;
+    const fade = 1 - p.life / p.max;
+    ctx.globalAlpha = fade < .3 ? fade / .3 : 1;
+    const flip = Math.abs(Math.cos(p.rot));
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.w * flip / 2, p.y - p.h / 2, Math.max(1, p.w * flip), p.h);
+  }
+  ctx.globalAlpha = 1;
+}
+function fxDrawRing() {
+  const age = fxState.now - fxState.ringAt;
+  if (age < 0 || age > .7) return;
+  const perfect = fxState.ringQ === 'perfect';
+  const k = age / .7;
+  for (let i = 0; i < (perfect ? 2 : 1); i++) {
+    const kk = clamp(k - i * .18, 0, 1);
+    if (kk <= 0) continue;
+    ctx.globalAlpha = (1 - kk) * .9;
+    ctx.beginPath(); ctx.arc(fxState.ringX, fxState.ringY, 10 + kk * (perfect ? 90 : 50), 0, Math.PI * 2);
+    ctx.strokeStyle = i ? '#f4f2e9' : '#d7ef79'; ctx.lineWidth = perfect ? 5 - kk * 3 : 3 - kk * 2; ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  if (perfect && age < .65) text('PERFECT', fxState.ringX, fxState.ringY - 30 - k * 24, 16 + (1 - k) * 4, '#ecfaa8');
+}
+
+// ---------------------------------------------------------------------------
+// Drawing primitives
+// ---------------------------------------------------------------------------
+function line(points, color = '#dce6c3', width = 3) {
+  ctx.beginPath(); ctx.moveTo(...points[0]);
+  for (const p of points.slice(1)) ctx.lineTo(...p);
+  ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke();
+}
+function polygon(points, color) {
+  ctx.beginPath(); ctx.moveTo(...points[0]);
+  for (const p of points.slice(1)) ctx.lineTo(...p);
+  ctx.closePath(); ctx.fillStyle = color; ctx.fill();
+}
+function circle(x, y, r, color, outline) {
+  ctx.beginPath(); ctx.arc(x, y, Math.max(.1, r), 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
+  if (outline) { ctx.strokeStyle = outline; ctx.lineWidth = 2; ctx.stroke(); }
+}
+function rect(x, y, w, h, color) { ctx.fillStyle = color; ctx.fillRect(x, y, w, h); }
+function text(value, x, y, size = 15, color = '#dce6c3', align = 'center') {
+  ctx.fillStyle = color; ctx.font = `600 ${size}px "Helvetica Neue", Arial, sans-serif`; ctx.textAlign = align; ctx.fillText(value, x, y);
+}
+function ball(x, y, radius = 9, color = '#fffbe6') {
+  ctx.save(); ctx.globalAlpha = .24; circle(x + 4, y + radius + 5, radius * .9, '#071e17'); ctx.restore();
+  circle(x, y, radius, color); circle(x - radius * .3, y - radius * .3, radius * .22, '#ffffff99');
+}
+// Ball above a ground point: the shadow stays on the ground and shrinks with height.
+function fxBall(x, groundY, height, radius, color) {
+  ctx.save(); ctx.globalAlpha = clamp(.32 - height / 400, .08, .32);
+  ctx.beginPath(); ctx.ellipse(x + 2, groundY + 2, radius * (1.1 - Math.min(height, 120) / 300), radius * .42, 0, 0, Math.PI * 2); ctx.fillStyle = '#071e17'; ctx.fill();
+  ctx.restore();
+  circle(x, groundY - height, radius, color); circle(x - radius * .3, groundY - height - radius * .3, radius * .22, '#ffffff99');
+}
+// Fading ghost copies along an analytic path sampled at earlier progress values.
+function fxTrail(path, p, step, count, color) {
+  for (let k = count; k >= 1; k--) {
+    const q = p - k * step;
+    if (q < 0) continue;
+    path(q);
+    ctx.globalAlpha = .34 * (1 - k / (count + 1));
+    circle(fxP.x, fxP.y - fxP.h, fxP.r * (1 - k * .06), color);
+  }
+  ctx.globalAlpha = 1;
+}
+function fxRing(x, y, rx, ry, color, width = 2, alpha = 1) {
+  ctx.globalAlpha = clamp(alpha, 0, 1);
+  ctx.beginPath(); ctx.ellipse(x, y, Math.max(.1, rx), Math.max(.1, ry), 0, 0, Math.PI * 2); ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+function player(x, y, color, angle = 0, racket = false) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
+  ctx.save(); ctx.scale(1, .5); circle(3, 18, 21, '#102f2870'); ctx.restore();
+  line([[-7, 5], [-10, 20]], '#eeead7', 7); line([[7, 5], [10, 20]], '#eeead7', 7);
+  line([[-15, 0], [15, 0]], color, 9);
+  circle(0, 0, 13, color); circle(0, -5, 8, '#d4b090');
+  if (racket) { line([[15, 0], [30, -12]], '#eadbb2', 4); ctx.beginPath(); ctx.ellipse(37, -20, 9, 13, .5, 0, Math.PI * 2); ctx.strokeStyle = '#e2edcd'; ctx.lineWidth = 3; ctx.stroke(); }
+  ctx.restore();
+}
+
+// Timing strip: the good zone in olive lime, the perfect zone inside it in bright lime,
+// and the moment of action frozen in the result colour once the attempt settles.
+function fxStrip(game, progress, target, good, perfect, label, scale, goodBelow = false) {
+  const x = 275, y = 591, w = 450, h = 10;
+  const toX = v => x + clamp(v / scale, 0, 1) * w;
+  rect(x - 24, y - 35, w + 48, 70, '#0d2b24d9');
+  text(label, 500, y - 14, 11, '#c4d3b7');
+  rect(x, y, w, h, '#71866a');
+  const g0 = toX(target - good), g1 = toX(target + good);
+  rect(g0, y, g1 - g0, h, '#8fab4c');
+  if (perfect > 0 && perfect < good) {
+    const p0 = toX(target - perfect), p1 = toX(target + perfect);
+    rect(p0, y - 3, p1 - p0, h + 6, '#d7ef79');
+    text('PERFECT', (p0 + p1) / 2, y + 27, 10, '#d7ef79');
+    // Round 2 (basketball): the GOOD tag moves below the track so it never sits under the marker.
+    if (!goodBelow) text('GOOD', g0 - 6, y + 9, 9, '#a9bf78', 'right');
+    else if (g1 - (p0 + p1) / 2 > 46) text('GOOD', g1 - 2, y + 27, 9, '#a9bf78', 'right');
+  }
+  const px = toX(progress);
+  if (fxSettled(game)) {
+    const q = fxQuality(game.result), won = Boolean(game.result?.success);
+    const color = q === 'perfect' ? '#ecfaa8' : q === 'good' ? (won ? '#d7ef79' : '#f1d98a') : '#e0703f';
+    if (q === 'perfect') fxRing(px, y + 5, 12, 12, '#ecfaa8', 2, .8);
+    rect(px - 3, y - 8, 6, h + 16, color);
+  } else {
+    // Build-up: the marker brightens and grows as it nears the zone.
+    const near = clamp(1 - Math.abs(progress - target) / (good * 4), 0, 1);
+    rect(px - 2 - near, y - 5 - near * 2, 4 + near * 2, h + 10 + near * 4, '#fffbe1');
+  }
+}
+
+// Crowd rows with a quiet shimmer (scattered seat glints) and a wave of lime and paper on big moments.
+function fxCrowd(y0, rows, palette) {
+  const reduced = fxReduced(), cheer = fxCheer(), t = fxState.now;
+  const bucket = reduced ? 0 : Math.floor(t * 4);
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < 40; col++) {
+      const x = col * 27 + (row % 2) * 13;
+      let color = palette[(row + col) % 3];
+      if (((col * 7 + row * 13 + bucket * 11) % 47) === 0) color = '#b9c89a';
+      let lift = 0;
+      if (cheer > .12) {
+        if ((col + row * 5 + bucket) % 3 === 0) color = col % 2 ? '#d7ef79' : '#f4f2e9';
+        if (!reduced) lift = cheer * 6 * Math.abs(Math.sin(t * 12 + col * .5 + row * 1.3));
+      }
+      rect(x, y0 + row * 14 - lift, 14, 5, color);
+    }
+  }
+}
+function seats(base = '#163c35') {
+  rect(0, 0, W, H, base);
+  fxCrowd(48, 3, FX_SEATS);
+  line([[0, 106], [W, 106]], '#91a776', 3);
+}
+
+// ---------------------------------------------------------------------------
+// Baseball
+// ---------------------------------------------------------------------------
+// Pitch from the mound (p=0) to the plate (p=1): the break arrives late, by pitch kind.
+function fxPitch(game, p) {
+  const kind = game.shot?.kind || 'fastball', lane = game.shot?.lane || 0;
+  const brk = kind === 'curveball' ? 62 : kind === 'changeup' ? 28 : 12;
+  const hump = kind === 'curveball' ? 30 : kind === 'changeup' ? 14 : 4;
+  const q = clamp(p, 0, 1.3);
+  fxP.x = 500 - lane * brk * .3 + lane * brk * q * q * q;
+  fxP.y = 394 + q * 132 - Math.sin(clamp(q, 0, 1) * Math.PI) * hump * (1 - q * .5);
+  fxP.r = 5 + clamp(q, 0, 1.2) * 5; fxP.h = 0;
+}
+function fxFenceY(dx) { return 425 - 285 * Math.sqrt(Math.max(0, 1 - (dx / 478) ** 2)); }
+function drawBaseball(game) {
+  seats();
+  ctx.save(); ctx.beginPath(); ctx.ellipse(500, 425, 490, 298, 0, Math.PI, 0); ctx.lineTo(990, 650); ctx.lineTo(10, 650); ctx.closePath(); ctx.clip();
+  rect(0, 110, W, 540, '#245a45');
+  for (let n = 0; n < 11; n++) polygon([[n * 120 - 400, 650], [n * 120 - 275, 650], [500 + n * 45 - 180, 120], [500 + n * 45 - 220, 120]], n % 2 ? '#2b644b' : '#245a45');
+  ctx.restore();
+  ctx.beginPath(); ctx.ellipse(500, 425, 478, 285, 0, Math.PI, 0); ctx.strokeStyle = '#d4df98'; ctx.lineWidth = 5; ctx.stroke();
+  text('CLUTCH BALLPARK', 500, 126, 12, '#c4d7b4'); text('390', 499, 167, 13); text('325', 143, 268, 12); text('325', 857, 268, 12);
+  polygon([[500, 540], [282, 395], [500, 251], [718, 395]], '#be9870');
+  polygon([[500, 500], [337, 395], [500, 288], [663, 395]], '#3d7052');
+  line([[115, 213], [500, 540], [885, 213]], '#e7e5bc', 3);
+  for (const [x, y] of [[500, 540], [282, 395], [500, 251], [718, 395]]) polygon([[x, y - 7], [x + 9, y], [x, y + 7], [x - 9, y]], '#f8f3d8');
+  ctx.beginPath(); ctx.ellipse(500, 393, 34, 20, 0, 0, Math.PI * 2); ctx.fillStyle = '#c4a279'; ctx.fill();
+  rect(487, 391, 26, 5, '#ede8cd');
+  for (const [x, y] of [[250, 270], [500, 207], [755, 270], [344, 345], [650, 345]]) player(x, y, '#90ab85');
+  const playing = game.phase === 'playing' && game.shot;
+  const progress = game.shot ? timing(game) : 0;
+  // Pitcher: a short wind-up before the release.
+  player(500, 378, '#e6d6b5');
+  if (playing && progress < .12) line([[510, 372], [510 + Math.cos(-2.4 + progress * 25) * 18, 372 + Math.sin(-2.4 + progress * 25) * 18]], '#e6d6b5', 5);
+  const settled = fxSettled(game) && game.shot;
+  const result = game.result, st = fxFlightTime(game), D = fxDuration(game);
+  const swung = settled && Number.isFinite(result?.error);
+  const swing = swung ? Math.min(1, st * 8) : 0;
+  player(461, 522, '#dfb34f', -.2 + swing * .7);
+  const batAngle = -.8 + swing * 3;
+  line([[455, 517], [455 + Math.cos(batAngle) * 46, 517 + Math.sin(batAngle) * 46]], '#f8e5b0', 7);
+  if (!game.shot || game.phase === 'ready') return;
+  const q = fxQuality(result);
+  if (settled && (result?.success || result?.contact)) {
+    // Hit: home runs climb a distance arc into the stands; other contact dies in the outfield.
+    const homer = Boolean(result.success);
+    const side = clamp((Number(result.error) || 0) * 2400 + (game.shot.lane || 0) * 40, -320, 320);
+    const dist = Number(result.distance) || (homer ? (q === 'perfect' ? 432 : 401) : 0);
+    const reachK = homer ? 1 : clamp((dist || 250) / 390, .3, .95);
+    const landX = 500 + side * reachK;
+    const landY = homer ? clamp(fxFenceY(side) - 34 - Math.max(0, dist - 380) * .55, 40, 100) : 526 + (fxFenceY(side) - 526) * reachK;
+    const lift = homer ? 240 : dist && dist < 240 ? 25 : 70 + reachK * 80;
+    const travel = D * .72;
+    const ur = clamp(st / travel, 0, 1), u = 1 - (1 - ur) * (1 - ur);
+    const path = k => { fxP.x = 500 + (landX - 500) * k; fxP.y = 526 + (landY - 526) * k - Math.sin(k * Math.PI) * lift; fxP.r = 8 - 4.5 * k + Math.sin(k * Math.PI) * 2; fxP.h = 0; };
+    ctx.save(); ctx.setLineDash([7, 7]); ctx.beginPath();
+    for (let i = 0; i <= 18; i++) { path(u * i / 18); i ? ctx.lineTo(fxP.x, fxP.y) : ctx.moveTo(fxP.x, fxP.y); }
+    ctx.strokeStyle = homer ? '#f4f2e9b0' : '#e4e9c766'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+    path(u);
+    if (ur >= 1) {
+      fxImpact(landX, landY, game);
+      if (dist > 0) {
+        const pop = clamp((st - travel) / .18, 0, 1);
+        const label = `${Math.round(dist)} FT`;
+        rect(landX - 46, landY - 46, 92, 28, homer ? '#102a24e6' : '#102a24b0');
+        text(label, landX, landY - 26, 14 + (1 - pop) * 6, homer ? '#d7ef79' : '#dce6c3');
+      }
+      if (!homer) ball(fxP.x, fxP.y, 4);
+      else circle(landX, landY, 4, '#fffbe6');
+    } else ball(fxP.x, fxP.y, fxP.r);
+  } else if (settled) {
+    // Swing and miss, or a called strike: the pitch carries on past the plate.
+    const pp = clamp(progress + st / (game.shot.duration || 1.8), 0, 1.3);
+    fxPitch(game, pp);
+    if (pp >= 1.15) fxImpact(fxP.x, fxP.y, game);
+    ctx.globalAlpha = clamp((1.3 - pp) / .2, 0, 1);
+    ball(fxP.x, fxP.y, fxP.r);
+    ctx.globalAlpha = 1;
+  } else {
+    const p = clamp(progress, 0, 1.2);
+    ctx.beginPath(); ctx.ellipse(500, 526, 27, 12, 0, 0, Math.PI * 2); ctx.strokeStyle = '#d7ef7980'; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]);
+    fxTrail(k => fxPitch(game, k), p, .035, 6, '#fffbe6');
+    fxPitch(game, p);
+    ball(fxP.x, fxP.y, fxP.r);
+  }
+  const [good, perfect] = fxZones(game.shot, .068, .03);
+  fxStrip(game, progress, 1, good, perfect, 'SWING AS THE BALL REACHES THE PLATE', 1.2);
+}
+
+// ---------------------------------------------------------------------------
+// Basketball
+// ---------------------------------------------------------------------------
+function fxHoop(rip, rimJolt, t) {
+  const netY = 213, drop = rip * 12;
+  for (let i = 0; i < 7; i++) {
+    const sway = rip * 4 * Math.sin(t * 26 + i * 1.1);
+    line([[463 + i * 12, netY], [476 + i * 8 + sway, netY + 45 + drop]], '#f5eacb', 1.5);
+    line([[463 + i * 12, netY], [524 - i * 8 + sway, netY + 45 + drop]], '#f5eacb', 1.5);
+  }
+  ctx.beginPath(); ctx.ellipse(500 + rimJolt, netY + Math.abs(rimJolt) * .4, 42, 11, 0, 0, Math.PI * 2); ctx.strokeStyle = '#ed7546'; ctx.lineWidth = 6; ctx.stroke();
+}
+// Shot spots by kind: [x offset from the hoop axis, court y of the shooter's body]. shot.lane's sign picks the side.
+const FX_SPOTS = { paint: [48, 300], elbow: [152, 350], corner: [283, 212], top: [26, 525] };
+function fxSpot(shot) {
+  if (!shot) return [350, 520];
+  const spot = FX_SPOTS[shot.kind];
+  if (!spot) return [350 + (shot.lane || 0) * 110, 425 + (shot.target ?? .5) * 160];
+  return [500 + (Math.sign(shot.lane) || 1) * spot[0], spot[1]];
+}
+// Closeout defender: visible from the start of the attempt, arrives at shot.closeout seconds.
+function fxDefender(game, sx, sy) {
+  const close = game.shot?.closeout;
+  if (!Number.isFinite(close) || close <= 0) return null;
+  const d = clamp((game.time || 0) / close, 0, 1);
+  const dx = 500 - sx, dy = 228 - sy, len = Math.hypot(dx, dy) || 1;
+  const ex = sx + dx / len * 46, ey = sy + dy / len * 46 - 4;
+  const ox = 500 + (sx - 500) * .12, oy = 268;
+  return { x: ox + (ex - ox) * d, y: oy + (ey - oy) * d, d, arrived: d >= 1, close };
+}
+function fxDrawDefender(def, game, st) {
+  const settled = fxSettled(game);
+  const contested = Boolean(game.result?.contested);
+  const running = !def.arrived && !settled;
+  const t = fxState.now;
+  const bob = running && !fxReduced() ? Math.abs(Math.sin(t * 14)) * 3 : 0;
+  const jump = settled && contested ? Math.sin(clamp(st / .55, 0, 1) * Math.PI) * 18 : 0;
+  const x = def.x, y = def.y - bob - jump;
+  player(x, y, '#cfd8c0', running ? Math.sin(t * 14) * .08 : 0);
+  if (def.arrived || (settled && def.d > .85)) {
+    // Hand up: both hands on a contested release, one otherwise.
+    line([[x + 12, y - 2], [x + 22, y - 44]], '#cfd8c0', 7); circle(x + 23, y - 47, 6, '#d4b090');
+    if (contested) { line([[x - 12, y - 2], [x - 20, y - 42]], '#cfd8c0', 7); circle(x - 21, y - 45, 6, '#d4b090'); }
+  } else {
+    line([[x - 12, y], [x - 20, y + 10 - bob * 2]], '#cfd8c0', 7); line([[x + 12, y], [x + 20, y + 10 + bob * 2]], '#cfd8c0', 7);
+  }
+  return [x + 23, y - 47];
+}
+// Pressure: a slow darkening at the edges of the field for the final attempt.
+function fxPressure() {
+  const pulse = fxReduced() ? .8 : .8 + Math.sin(fxState.now * 3) * .2;
+  const shade = ctx.createRadialGradient?.(500, 330, 260, 500, 330, 640);
+  if (!shade || typeof shade.addColorStop !== 'function') return;
+  shade.addColorStop(0, '#06140f00'); shade.addColorStop(1, '#06140f');
+  ctx.globalAlpha = .55 * pulse; ctx.fillStyle = shade; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
+}
+function fxMoneyGlow(x, y, r) {
+  const pulse = fxReduced() ? 0 : Math.sin(fxState.now * 6) * 2;
+  ctx.globalAlpha = .28; circle(x, y, r + 9 + pulse, '#d7ef79'); ctx.globalAlpha = 1;
+  fxRing(x, y, r + 4, r + 4, '#ecfaa8', 2, .9);
+}
+function drawBasketball(game) {
+  seats('#26372e');
+  polygon([[205, 150], [795, 150], [1080, 650], [-80, 650]], '#ba8150');
+  ctx.save(); ctx.beginPath(); ctx.moveTo(205, 150); ctx.lineTo(795, 150); ctx.lineTo(1080, 650); ctx.lineTo(-80, 650); ctx.closePath(); ctx.clip();
+  for (let i = 0; i < 16; i++) rect(0, 150 + i * 34, W, 17, '#c28a55');
+  ctx.restore();
+  line([[218, 160], [782, 160], [1025, 624], [-25, 624], [218, 160]], '#f4e1b3', 3);
+  polygon([[410, 160], [590, 160], [656, 345], [344, 345]], '#456251');
+  line([[410, 160], [344, 345], [656, 345], [590, 160]], '#efdab0', 3);
+  ctx.beginPath(); ctx.ellipse(500, 345, 155, 63, 0, 0, Math.PI); ctx.strokeStyle = '#efdab0'; ctx.lineWidth = 3; ctx.stroke();
+  // Three-point line: straight corner lines from the baseline, then the arc.
+  line([[256, 160], [250, 235]], '#eed9ab', 3); line([[744, 160], [750, 235]], '#eed9ab', 3);
+  ctx.beginPath(); ctx.ellipse(500, 235, 250, 250, 0, 0, Math.PI); ctx.strokeStyle = '#eed9ab'; ctx.lineWidth = 3; ctx.stroke();
+  text('C L U T C H', 500, 435, 30, '#9e6239');
+  line([[500, 111], [500, 171]], '#a2b4a0', 8);
+  const shot = game.shot;
+  const [startX, startY] = fxSpot(shot);
+  const settled = fxSettled(game);
+  const st = fxFlightTime(game), D = fxDuration(game), ta = D * .6;
+  const result = game.result, q = fxQuality(result), success = Boolean(result?.success);
+  const contested = Boolean(result?.contested);
+  const short = (game.power || 0) < (shot?.target ?? .5);
+  const def = shot && game.phase !== 'ready' ? fxDefender(game, startX, startY) : null;
+  const near = Math.sign(startX - 500) || -1;
+  let boardJolt = 0, rimJolt = 0, rip = 0, behindNet = false;
+  const blocked = settled && contested && !success && short && def;
+  const after = st - ta;
+  if (settled && after > 0 && !blocked) {
+    const decay = Math.exp(-after * 9);
+    if (success) rip = Math.exp(-after * 3.2) * (q === 'perfect' ? 1 : .6);
+    else if (short) rimJolt = decay * Math.sin(after * 70) * 4;
+    else boardJolt = decay * Math.sin(after * 60) * 3;
+    if (success && q !== 'perfect') rimJolt = Math.exp(-after * 12) * Math.sin(after * 60) * 2;
+  }
+  rect(420, 131 + boardJolt, 160, 72, '#d3e2c9');
+  line([[474, 199 + boardJolt], [474, 167 + boardJolt], [526, 167 + boardJolt], [526, 199 + boardJolt]], '#6c836d', 3);
+  // Closeout clock: a ring at the shooter's feet fills as the defender closes in.
+  if (def && !settled) {
+    ctx.beginPath(); ctx.ellipse(startX, startY + 20, 30, 11, 0, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * def.d);
+    ctx.strokeStyle = def.arrived ? '#e8894f' : '#f1d98a'; ctx.lineWidth = def.arrived ? 4 : 3; ctx.stroke();
+  }
+  const defBehind = def && def.y < startY;
+  let hand = null;
+  if (defBehind) hand = fxDrawDefender(def, game, st);
+  // Shooter: dips while charging, rises on the release.
+  const dip = game.holding ? Math.min(1, game.power || 0) * 6 : 0;
+  player(startX, startY + dip, '#eac258', settled ? -.2 - Math.min(1, st * 6) * .25 : -.2);
+  if (def && !defBehind) hand = fxDrawDefender(def, game, st);
+  let bx, by, br;
+  if (settled) {
+    const sx = startX + 16, sy = startY - 30;
+    const ex = success ? 500 + (q === 'perfect' ? 0 : -near * 13) : short ? 500 + near * 27 : 500 - near * 24;
+    const ey = success ? 205 : short ? 218 : 196;
+    // Keep the top of the arc on screen (about y 45) for spots near the baseline.
+    const apex = Math.min(210 + (startY - 300) * .25, (sy + ey) / 2 - 45);
+    if (blocked) {
+      // Blocked: the ball meets the raised hand and is swatted away.
+      const [hx, hy] = hand || [def.x, def.y - 47];
+      const tb = D * .22;
+      if (st < tb) {
+        const k = st / tb; bx = sx + (hx - sx) * k; by = sy + (hy - sy) * k - Math.sin(k * Math.PI) * 30; br = 13;
+      } else {
+        fxImpact(hx, hy, game);
+        const v = clamp((st - tb) / (D * .6), 0, 1);
+        bx = hx - near * v * 160; by = hy - Math.sin(v * Math.PI) * 50 + v * v * 170; br = 12;
+        fxRing(hx, hy, 14 + v * 30, 14 + v * 30, '#e8894f', 3, 1 - v * 2);
+      }
+    } else {
+      const path = k => { fxP.x = sx + (ex - sx) * k; fxP.y = sy + (ey - sy) * k - Math.sin(k * Math.PI) * apex; fxP.r = 13 - 4 * k; fxP.h = 0; };
+      if (after <= 0) {
+        const u = fxEaseInOut(st / ta) * .15 + (st / ta) * .85;
+        fxTrail(path, u, .04, 5, '#e67d3a');
+        path(u); bx = fxP.x; by = fxP.y; br = fxP.r;
+      } else {
+        fxImpact(success ? 500 : ex, success ? 236 : ey, game);
+        const v = clamp(after / (D * .3), 0, 1);
+        br = 9;
+        if (success) {
+          behindNet = true;
+          bx = 500 + (ex - 500) * (1 - v) * Math.cos(v * 9);
+          by = 205 + fxEaseInOut(v) * 62;
+        } else if (short) {
+          bx = ex + near * v * 75; by = ey - Math.sin(v * Math.PI) * 55 + v * v * 150;
+        } else {
+          bx = ex - near * v * 95; by = ey - Math.sin(v * Math.PI) * 80 + v * v * 160;
+        }
+      }
+    }
+  } else {
+    // Wind-up: the ball rises as power builds.
+    bx = startX + 16; by = startY - 17 + dip - (game.power || 0) * 16; br = 13;
+  }
+  const money = Boolean(shot?.money);
+  if (behindNet) { if (money) fxMoneyGlow(bx, by, br); ball(bx, by, br, '#e67d3a'); fxHoop(rip, rimJolt, fxState.now); }
+  else { fxHoop(rip, rimJolt, fxState.now); if (money) fxMoneyGlow(bx, by, br); ball(bx, by, br, '#e67d3a'); }
+  if (money && game.phase !== 'ready') fxPressure();
+  if (shot && game.phase !== 'ready') {
+    let [good, perfect] = fxZones(shot, .095, .038);
+    // Once the defender arrives (or the result says contested) the zones visibly shrink.
+    if ((def?.arrived && !settled) || (settled && contested)) { const k = Number(shot.contestScale) || .5; good *= k; perfect *= k; }
+    const label = game.holding ? 'RELEASE IN THE GREEN' : 'HOLD TO BUILD POWER';
+    fxStrip(game, game.power || 0, shot.target, good, perfect, money ? `MONEY BALL ×2  ·  ${label}` : def ? `${label}  ·  BEAT THE CLOSEOUT` : label, 1, true);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tennis
+// ---------------------------------------------------------------------------
+function courtPoint(x, y) { const width = 200 + y * 290; return [500 + x * width, 167 + y * 391]; }
+function fxSpin(game) {
+  const kind = game.shot?.kind;
+  if (kind === 'topspin') return { bounce: .62, h1: 82, h2: 56 };
+  if (kind === 'slice') return { bounce: .74, h1: 44, h2: 18 };
+  return { bounce: .68, h1: 60, h2: 36 };
+}
+function fxBounceMark(x, y, since, preview) {
+  if (preview) { ctx.save(); ctx.setLineDash([3, 4]); fxRing(x, y, 11, 4, '#d7ef79', 1.5, .35); ctx.restore(); return; }
+  if (since > .5) return;
+  fxRing(x, y, 8 + since * 50, 3 + since * 18, '#f4f2e9', 2, 1 - since * 2);
+  circle(x, y, 3, '#e4f276');
+}
+function drawTennis(game) {
+  rect(0, 0, W, H, '#1b4b40');
+  for (let i = 0; i < 13; i++) rect(0, i * 55, W, 27, '#1e5042');
+  rect(0, 40, W, 50, '#153f36');
+  fxCrowd(46, 3, ['#4f7a62', '#3b6553', '#7d9466']);
+  text('C L U T C H   T E N N I S   C L U B', 500, 117, 12, '#b4cba1');
+  polygon([courtPoint(-1, 0), courtPoint(1, 0), courtPoint(1, 1), courtPoint(-1, 1)], '#456d63');
+  const courtLines = [[[-1, 0], [1, 0], [1, 1], [-1, 1], [-1, 0]], [[-.76, 0], [-.76, 1]], [[.76, 0], [.76, 1]], [[-.76, .3], [.76, .3]], [[-.76, .7], [.76, .7]], [[0, .3], [0, .7]]];
+  for (const points of courtLines) line(points.map(([x, y]) => courtPoint(x, y)), '#e6ebce', 3);
+  const settled = fxSettled(game) && game.shot;
+  const result = game.result, st = fxFlightTime(game), D = fxDuration(game), q = fxQuality(result);
+  const returned = settled && result?.success;
+  const opponent = game.shot?.opponent || 0;
+  const oppX0 = opponent * .8;
+  const playerX = game.shot ? game.shot.lane * .7 : 0;
+  const aimTo = (result?.aim ?? game.aim ?? 0) * .8;
+  // Opponent: split-step while the ball comes in, then chase the return. Perfect returns leave them short.
+  let ox = oppX0, oppSwing = 0;
+  if (game.phase === 'playing' && game.shot) {
+    const p = timing(game);
+    oppSwing = clamp(1 - p * 7, 0, 1);
+    ox = oppX0 + Math.sin((game.time || 0) * 5) * .02 * clamp(p * 4, 0, 1);
+  } else if (returned) {
+    const reach = q === 'perfect' ? .62 : 1;
+    ox = oppX0 + (aimTo - oppX0) * fxEaseOut(st / (D * .85)) * reach;
+  }
+  const spin = fxSpin(game);
+  // Far-side shapes first (opponent, return ball before the net), then the net, then near side.
+  const [nx, ny] = courtPoint(-1.07, .5), [ex] = courtPoint(1.07, .5);
+  let incoming = -1, ballBeforeNet = false;
+  const returnPath = k => {
+    const depth = .93 - k * .85;
+    const [x, y] = courtPoint(playerX + (aimTo - playerX) * k, depth);
+    fxP.x = x; fxP.y = y; fxP.r = 11 - k * 5;
+    fxP.h = k < .7 ? 26 + 64 * Math.sin(Math.PI * k / .7) * (1 - k * .4) - 26 * (k / .7) : 30 * Math.sin(Math.PI * clamp((k - .7) / .45, 0, 1));
+  };
+  const inPath = k => {
+    const b = spin.bounce;
+    const [x, y] = courtPoint(oppX0 + (playerX - oppX0) * k, k * .95);
+    fxP.x = x; fxP.y = y; fxP.r = 6 + clamp(k, 0, 1.3) * 5;
+    fxP.h = k < b ? spin.h1 * Math.sin(Math.PI * k / b) + 6 * (1 - k / b) : spin.h2 * Math.sin(Math.PI * clamp((k - b) / (1.18 - b), 0, 1));
+  };
+  if (returned) {
+    const u = clamp(st / (D * .7), 0, 1);
+    ballBeforeNet = u > .5;
+  } else if (game.shot && game.phase !== 'ready') {
+    incoming = settled ? clamp(timing(game) + st / (game.shot.duration || 1.5), 0, 1.4) : clamp(timing(game), 0, 1.35);
+  }
+  // Bounce markers on the ground.
+  if (incoming >= 0) {
+    const b = spin.bounce;
+    const [bx, by] = courtPoint(oppX0 + (playerX - oppX0) * b, b * .95);
+    fxBounceMark(bx, by, (incoming - b) * (game.shot.duration || 1.5), incoming < b);
+  } else if (returned) {
+    const u = clamp(st / (D * .7), 0, 1);
+    const [bx, by] = courtPoint(playerX + (aimTo - playerX) * .7, .93 - .7 * .85);
+    if (u >= .7) { fxBounceMark(bx, by, (u - .7) * D * .7, false); fxImpact(bx, by, game); }
+  }
+  if (ballBeforeNet) { returnPath(clamp(st / (D * .7), 0, 1)); fxTrail(returnPath, clamp(st / (D * .7), 0, 1), .035, 5, '#e4f276'); fxBall(fxP.x, fxP.y, fxP.h, fxP.r, '#e4f276'); }
+  player(...courtPoint(ox, -.035), '#d9e1ca', Math.PI + oppSwing * .5, true);
+  rect(nx, ny - 24, ex - nx, 26, '#122d2870');
+  for (let i = 0; i < 35; i++) line([[nx + i * (ex - nx) / 35, ny - 24], [nx + i * (ex - nx) / 35, ny + 1]], '#9cac9190', 1);
+  line([[nx, ny - 24], [ex, ny - 24]], '#f2f0cf', 4);
+  line([[nx, ny - 33], [nx, ny + 5]], '#bac8a9', 5); line([[ex, ny - 33], [ex, ny + 5]], '#bac8a9', 5);
+  const swing = settled && Number.isFinite(result?.error) ? Math.min(1, st * 7) : 0;
+  player(...courtPoint(playerX, .98), '#e7bb4d', -swing * .9, true);
+  const aimX = courtPoint((game.aim ?? 0) * .8, .12)[0];
+  line([[aimX - 8, 214], [aimX, 205], [aimX + 8, 214]], '#d7ef79', 3);
+  if (returned && !ballBeforeNet) {
+    const u = clamp(st / (D * .7), 0, 1);
+    returnPath(u); fxBall(fxP.x, fxP.y, fxP.h, fxP.r, '#e4f276');
+  } else if (incoming >= 0) {
+    fxTrail(inPath, incoming, .03, 6, '#e4f276');
+    inPath(incoming);
+    if (settled && incoming > 1.2) fxImpact(fxP.x, fxP.y, game);
+    ctx.globalAlpha = clamp((1.4 - incoming) / .2, 0, 1);
+    fxBall(fxP.x, fxP.y, fxP.h, fxP.r, '#e4f276');
+    ctx.globalAlpha = 1;
+  }
+  if (game.shot && game.phase !== 'ready') {
+    const good = tennisWindow(game);
+    fxStrip(game, timing(game), 1, good, good * .45, `RALLY ${game.rally ?? 0}  ·  RETURN AT THE BASELINE`, 1.2);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Soccer
+// ---------------------------------------------------------------------------
+// Goal mouth in canvas space: posts at x 267/733 (bar, y 127) and 245/755 (goal line, y 260).
+// Height: aimY 0 is on the grass (y 252), 0.92 is the crossbar (y 127), 1 is over it (y 116).
+function fxGoalY(aimY) { return 252 - clamp(aimY, 0, 1.1) * 136; }
+function fxNetLine(x0, y0, x1, y1, segs, cx, cy, bulge) {
+  ctx.beginPath();
+  for (let s = 0; s <= segs; s++) {
+    const t = s / segs;
+    let x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t;
+    if (bulge > 0) {
+      const dx = x - cx, dy = y - cy, f = bulge * Math.exp(-(dx * dx + dy * dy) / 2600);
+      x += dx * f * .55; y += dy * f * .55 + f * 7;
+    }
+    if (s) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+  }
+  ctx.stroke();
+}
+function fxPose(game) {
+  try {
+    const pose = typeof keeperPose === 'function' ? keeperPose(game) : null;
+    if (pose && Number.isFinite(pose.x)) return pose;
+  } catch { /* fall back to the plain position */ }
+  return { x: keeperPosition(game), committed: false, lean: 0, dive: null };
+}
+// reach 0..1 stretches the arms; high 0..1 points them up (a high dive) or out low.
+function fxKeeper(x, y, lean, reach, high = .5) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(lean);
+  player(0, 0, '#d9aa49');
+  const ay = -10 - reach * (8 + high * 22), spread = 34 + reach * (10 - high * 4);
+  line([[-13, 0], [-spread, ay]], '#d9aa49', 9); line([[13, 0], [spread, ay]], '#d9aa49', 9);
+  circle(-spread - 1, ay, 6, '#e9e7c5'); circle(spread + 1, ay, 6, '#e9e7c5');
+  ctx.restore();
+}
+function drawSoccer(game) {
+  seats();
+  rect(0, 106, W, H - 106, '#2a654b');
+  for (let i = 0; i < 9; i++) rect(0, 110 + i * 63, W, 31, '#306e51');
+  line([[150, 220], [50, 538], [950, 538], [850, 220]], '#dce5be', 3);
+  line([[290, 220], [262, 336], [738, 336], [710, 220]], '#dce5be', 3);
+  ctx.beginPath(); ctx.ellipse(500, 538, 144, 50, 0, 0, Math.PI); ctx.strokeStyle = '#dce5be'; ctx.lineWidth = 3; ctx.stroke();
+  const left = 267, right = 733, top = 127, bottom = 260;
+  const settled = fxSettled(game);
+  const result = game.result, st = fxFlightTime(game), D = fxDuration(game);
+  const aim = result?.aim ?? game.aim ?? 0;
+  const aimY = clamp(Number(result?.aimY ?? game.aimY ?? .3) || 0, 0, 1);
+  const ax = 500 + aim * 230, ay = fxGoalY(aimY);
+  const missed = settled && !result?.success;
+  const wide = missed && Math.abs(aim) > .92;
+  const over = missed && !wide && Boolean(result?.over ?? (aimY > .92 || /bar/i.test(result?.text || '')));
+  const saved = missed && !over && !wide;
+  const sign = Math.sign(aim) || 1;
+  const hitPost = wide && Math.abs(aim) < .97;
+  const hitBar = over && aimY <= .97;
+  // Ball target: into the net, at the keeper's hands, the post, the bar, or past them.
+  const tx = wide ? 500 + sign * (hitPost ? 236 : 262) : ax;
+  const ty = hitBar ? top : over ? 110 : wide ? clamp(ay, 140, 250) : ay;
+  const ta = D * .38;
+  const arrived = settled && st >= ta;
+  const after = st - ta;
+  const bulge = settled && result?.success && arrived ? Math.exp(-after * 2.6) * (fxQuality(result) === 'perfect' ? 1.25 : .9) : 0;
+  const barJ = hitBar && arrived ? Math.sin(after * 80) * Math.exp(-after * 5) * 3 : 0;
+  polygon([[left, top], [right, top], [right + 22, bottom], [left - 22, bottom]], '#173d35');
+  if (bulge > 0) { ctx.globalAlpha = .5 * Math.min(1, bulge); circle(tx, ty + 6, 30 + bulge * 10, '#0b2620'); ctx.globalAlpha = 1; }
+  ctx.strokeStyle = '#98b79e90'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 23; i++) fxNetLine(left + i * 20, top, left - 22 + i * 22, bottom, bulge > 0 ? 6 : 1, tx, ty, bulge);
+  for (let i = 0; i <= 8; i++) fxNetLine(left - i * 3, top + i * 16.5, right + i * 3, top + i * 16.5, bulge > 0 ? 14 : 1, tx, ty, bulge);
+  line([[left - 22, bottom], [left, top + barJ], [right, top + barJ], [right + 22, bottom]], '#eeeecf', 7);
+  if (arrived && (hitPost || hitBar)) {
+    ctx.globalAlpha = Math.exp(-after * 6);
+    if (hitBar) line([[left, top + barJ], [right, top + barJ]], '#e8894f', 9);
+    else { const px = sign > 0 ? right : left, pb = sign > 0 ? right + 22 : left - 22; line([[px, top], [pb, bottom]], '#e8894f', 9); }
+    ctx.globalAlpha = 1;
+  }
+  // Keeper: sways and leans (the tell) while you aim, then dives to result.dive at the ball's height.
+  const k0 = result?.keeper ?? (game.shot ? keeperPosition(game) : 0);
+  let kx = 500 + k0 * 220, ky = 235, lean = 0, reach = 0, high = .5;
+  if (!settled && game.shot) {
+    const pose = fxPose(game);
+    kx = 500 + pose.x * 220;
+    lean = clamp(Number(pose.lean) || 0, -1, 1) * .22;
+    if (pose.committed && Number.isFinite(pose.dive)) { lean = Math.sign(pose.dive) * 1.05; reach = 1; ky = 243; high = .3; }
+  } else if (settled) {
+    const dive = Number.isFinite(result?.dive) ? result.dive : saved ? aim : result?.success ? clamp(k0 - Math.sign(aim - k0 || 1) * .2, -1, 1) : k0;
+    const diveY = clamp(Number(result?.diveY ?? result?.reachY ?? (saved ? aimY : .35)) || 0, 0, 1);
+    const kd = fxEaseOut(st / (D * .42));
+    kx = 500 + (k0 + (dive - k0) * kd) * 220;
+    // High dives lift the body toward the bar; low dives go flat along the grass.
+    ky = 235 - Math.sin(kd * Math.PI) * 10 + kd * (14 - diveY * 62);
+    const tilt = 1.15 + (.5 - diveY) * .7;
+    lean = clamp((dive - k0) * 2, -1, 1) * tilt * kd;
+    reach = kd; high = diveY;
+  }
+  // The ball's shadow runs along the grass to the goal line; the ball rises to its height.
+  const kick = settled ? Math.min(1, st * 7) : 0;
+  let gx = 500, gy = 469, h = 0, br = 12;
+  if (settled) {
+    const u = clamp(st / ta, 0, 1);
+    const rise = 258 - ty;
+    const path = k => { const ek = fxEaseOut(k); fxP.x = 500 + (tx - 500) * ek; fxP.y = 469 + (258 - 469) * ek; fxP.h = rise * Math.pow(ek, 1.4) + Math.sin(ek * Math.PI) * 14; fxP.r = 12 - ek * 5; };
+    if (!arrived) { fxTrail(path, u, .06, 5, '#fffbe6'); path(u); gx = fxP.x; gy = fxP.y; h = fxP.h; br = fxP.r; }
+    else {
+      fxImpact(tx, ty, game);
+      const v = clamp(after / (D * .35), 0, 1);
+      br = 7; gx = tx; gy = 258; h = rise;
+      if (result?.success) { h = rise * (1 - v); gy = 258 - v * 8; }
+      else if (saved) { gx = tx + sign * v * 130; gy = 258 + v * 40; h = rise * (1 - v) + Math.sin(v * Math.PI) * 30; }
+      else if (hitPost) { gx = tx + sign * v * 90; gy = 258 + v * 60; h = rise * (1 - v) + Math.sin(v * Math.PI) * 25; }
+      else if (hitBar) { gx = tx + (tx - 500) * .15 * v; gy = 258 - v * 30; h = rise + v * 90; br = 7 - v * 3; }
+      else if (over) { gx = tx + (tx - 500) * .2 * v; gy = 258 - v * 20; h = rise + v * 70; br = 7 - v * 3; }
+      else { gx = tx + sign * v * 70; gy = 258 - v * 20; h = rise + v * 30; br = 7 - v * 3; }
+    }
+  }
+  const behind = settled && result?.success && arrived;
+  if (behind) fxBall(gx, gy, h, br, '#fffbe6');
+  fxKeeper(kx, ky, lean, reach, high);
+  circle(500, 469, 4, '#e9edca');
+  player(480 + kick * 8, 510 - kick * 6, '#e6e6ca', -.4 + kick * .5);
+  if (!settled) {
+    // Aim: dashed line to the reticle, plus a height guide down to the goal line.
+    ctx.save(); ctx.setLineDash([5, 9]); line([[500, 469], [ax, ay]], '#d4ec7d65', 2);
+    ctx.setLineDash([3, 5]); line([[ax, 258], [ax, ay + 17]], '#d7ef7980', 2); ctx.restore();
+    ctx.save(); ctx.scale(1, .4); circle(ax, 258 / .4, 6, '#d7ef7955'); ctx.restore();
+  }
+  const offTarget = aimY > .92 || Math.abs(aim) > .92;
+  const reticle = offTarget ? '#e8894f' : '#d7ef79';
+  circle(ax, ay, 17, offTarget ? '#e8894f1a' : '#d7ef791a', reticle); line([[ax - 24, ay], [ax - 10, ay]], reticle, 2); line([[ax + 10, ay], [ax + 24, ay]], reticle, 2);
+  line([[ax, ay - 24], [ax, ay - 10]], reticle, 2); line([[ax, ay + 10], [ax, ay + 24]], reticle, 2);
+  if (!behind) {
+    if (settled && (over || (!arrived && h > 140))) ctx.globalAlpha = clamp(1 - (arrived ? clamp(after / (D * .35), 0, 1) : 0) * .8, 0, 1);
+    fxBall(gx, gy, h, br, '#fffbe6');
+    ctx.globalAlpha = 1;
+  }
+  if (game.shot?.clutch && game.phase !== 'ready') fxPressure();
+  rect(270, 577, 460, 39, '#123b2dd9'); text('PICK A CORNER AND A HEIGHT. WATCH THE KEEPER.', 500, 602, 12, '#dce9c4');
+}
+
+const FX_SCENES = { baseball: drawBaseball, basketball: drawBasketball, tennis: drawTennis, soccer: drawSoccer };
+
+function render(canvas, game) {
+  ctx = canvas.getContext('2d');
+  fxSync(game);
+  ctx.clearRect(0, 0, W, H);
+  const amp = fxShake();
+  ctx.save();
+  if (amp > .05) {
+    // Scale slightly about the centre so the shake never reveals the canvas edge.
+    const t = fxState.now, zoom = 1 + amp / 240;
+    ctx.translate(500, 325); ctx.scale(zoom, zoom);
+    ctx.translate(-500 + Math.sin(t * 83) * amp, -325 + Math.cos(t * 67) * amp);
+  }
+  FX_SCENES[game.sport]?.(game);
+  fxDrawParticles();
+  fxDrawRing();
+  ctx.restore();
+}
+
+
+
+const $ = id => document.getElementById(id);
+const canvas = $('field');
+const params = new URLSearchParams(location.search);
+const requestedDate = params.get('day');
+const pinnedDay = /^\d{4}-\d{2}-\d{2}$/.test(requestedDate || '') && !Number.isNaN(Date.parse(requestedDate));
+let day = pinnedDay ? requestedDate : utcDay();
+let mode = params.get('mode') === 'practice' ? 'practice' : 'daily';
+let selected = Object.hasOwn(SPORTS, location.hash.slice(1)) ? location.hash.slice(1) : 'baseball';
+let game;
+let paused = false;
+let lastFrame = 0;
+let finished = false;
+let sound = false;
+let audio;
+let speechTimer;
+let lastShot = null;
+let pendingCue = null;
+let store;
+try { store = JSON.parse(localStorage.getItem('clutch-bests') || '{}'); if (!store || typeof store !== 'object' || Array.isArray(store)) store = {}; }
+catch { store = {}; $('storage-note').textContent = 'Storage unavailable. Bests last for this visit.'; }
+
+function bestKey() { return `${selected}:${mode === 'daily' ? day : 'practice'}`; }
+function showBest() { $('best').textContent = Number.isFinite(store[bestKey()]) ? store[bestKey()] : '—'; }
+function announce(message) { clearTimeout(speechTimer); speechTimer = setTimeout(() => { $('live-status').textContent = message; }, 40); }
+// Small synthesized cues. Everything is opt-in (sound toggle) and fails silently.
+let sfxNoise;
+function sfxContext() {
+  if (!sound) return null;
+  try {
+    audio ??= new AudioContext();
+    if (audio.state === 'suspended') audio.resume().catch(() => {});
+    return audio;
+  } catch { return null; }
+}
+function sfxEnvelope(ac, node, volume, attack, duration, delay) {
+  const gain = ac.createGain(), at = ac.currentTime + delay;
+  gain.gain.setValueAtTime(.0001, at);
+  gain.gain.linearRampToValueAtTime(volume, at + Math.max(.004, attack));
+  gain.gain.exponentialRampToValueAtTime(.0001, at + duration);
+  node.connect(gain); gain.connect(ac.destination);
+  return at;
+}
+function sfxTone(freq, endFreq, duration, { type = 'sine', volume = .08, attack = .004, delay = 0 } = {}) {
+  const ac = sfxContext(); if (!ac) return;
+  try {
+    const osc = ac.createOscillator(); osc.type = type;
+    const at = sfxEnvelope(ac, osc, volume, attack, duration, delay);
+    osc.frequency.setValueAtTime(freq, at);
+    if (endFreq && endFreq !== freq) osc.frequency.exponentialRampToValueAtTime(endFreq, at + duration);
+    osc.start(at); osc.stop(at + duration + .02);
+  } catch { /* Audio is optional. */ }
+}
+function sfxHiss(duration, { filter = 'bandpass', freq = 1200, endFreq = 0, q = 1, volume = .1, attack = .004, delay = 0 } = {}) {
+  const ac = sfxContext(); if (!ac) return;
+  try {
+    if (!sfxNoise || sfxNoise.sampleRate !== ac.sampleRate) {
+      sfxNoise = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+      const data = sfxNoise.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    }
+    const source = ac.createBufferSource(), band = ac.createBiquadFilter();
+    source.buffer = sfxNoise; band.type = filter; band.Q.value = q;
+    source.connect(band);
+    const at = sfxEnvelope(ac, band, volume, attack, duration, delay);
+    band.frequency.setValueAtTime(freq, at);
+    if (endFreq) band.frequency.exponentialRampToValueAtTime(endFreq, at + duration);
+    source.start(at, Math.random()); source.stop(at + duration + .02);
+  } catch { /* Audio is optional. */ }
+}
+const sfx = {
+  crack(big) { sfxHiss(.07, { filter: 'highpass', freq: 1800, volume: big ? .5 : .32 }); sfxTone(1400, 380, .06, { type: 'triangle', volume: big ? .22 : .14 }); sfxTone(220, 120, .09, { volume: .12 }); },
+  foul() { sfxHiss(.05, { filter: 'bandpass', freq: 1500, volume: .16 }); sfxTone(700, 300, .05, { type: 'triangle', volume: .08 }); },
+  whiff() { sfxHiss(.18, { freq: 500, endFreq: 1600, q: .7, volume: .07, attack: .06 }); },
+  glove() { sfxHiss(.09, { filter: 'lowpass', freq: 900, volume: .3 }); sfxTone(170, 90, .1, { volume: .16 }); },
+  release() { sfxHiss(.16, { freq: 700, endFreq: 1300, q: .8, volume: .05, attack: .05 }); },
+  swish(clean) { sfxHiss(clean ? .42 : .3, { filter: 'highpass', freq: 2600, endFreq: 5200, volume: clean ? .16 : .11, attack: .05 }); },
+  clank() { for (const [f, v] of [[523, .07], [787, .05], [1360, .035]]) sfxTone(f, f * .98, .32, { type: 'square', volume: v * .6 }); sfxHiss(.05, { freq: 2400, volume: .12 }); },
+  pock(clean) { sfxTone(clean ? 980 : 820, 520, .055, { volume: .2 }); sfxHiss(.03, { freq: 1700, q: 2, volume: .2 }); },
+  kick() { sfxTone(130, 48, .14, { volume: .3 }); sfxHiss(.05, { filter: 'lowpass', freq: 500, volume: .25 }); },
+  net() { sfxHiss(.3, { filter: 'lowpass', freq: 380, volume: .22, attack: .02 }); sfxTone(95, 60, .22, { volume: .14 }); sfxHiss(.25, { freq: 2600, q: .6, volume: .04, attack: .03, delay: .03 }); },
+  save() { sfxHiss(.1, { filter: 'lowpass', freq: 1000, volume: .32 }); sfxTone(210, 110, .12, { volume: .16 }); },
+  post() { sfxTone(1180, 1150, .45, { type: 'triangle', volume: .08 }); sfxTone(1770, 1740, .3, { type: 'sine', volume: .04 }); },
+  thud() { sfxTone(110, 55, .2, { volume: .2 }); sfxHiss(.12, { filter: 'lowpass', freq: 300, volume: .18 }); },
+  buzzer() { sfxTone(196, 190, .45, { type: 'sawtooth', volume: .045 }); sfxTone(233, 228, .45, { type: 'square', volume: .025 }); },
+  crowd(level = 1) {
+    const volume = Math.min(.26, .1 + level * .04), length = 1 + Math.min(level, 4) * .2;
+    sfxHiss(length, { freq: 850, endFreq: 1200, q: .5, volume, attack: .3 });
+    sfxHiss(length * .85, { freq: 2100, q: 1.2, volume: volume * .45, attack: .25, delay: .08 });
+  },
+  win() { [523, 659, 784, 1047].forEach((f, i) => sfxTone(f, f, .28, { type: 'triangle', volume: .1, delay: i * .1 })); sfxTone(1047, 1047, .6, { volume: .05, delay: .4, attack: .03 }); },
+  lose() { [392, 330, 262].forEach((f, i) => sfxTone(f, f * .97, .3, { type: 'triangle', volume: .08, delay: i * .16 })); },
+  block() { sfxHiss(.07, { filter: 'lowpass', freq: 700, volume: .3 }); sfxTone(150, 80, .1, { volume: .18 }); sfxHiss(.03, { freq: 2200, q: 1.5, volume: .12, delay: .015 }); },
+  bar() { for (const [f, v] of [[440, .08], [663, .05], [1187, .03]]) sfxTone(f, f * .99, .7, { type: 'triangle', volume: v }); sfxHiss(.04, { freq: 3000, volume: .1 }); },
+  groan() { sfxHiss(.9, { freq: 520, endFreq: 300, q: .7, volume: .1, attack: .12, delay: .1 }); },
+  best() { [784, 1175].forEach((f, i) => sfxTone(f, f, .22, { type: 'sine', volume: .07, delay: .75 + i * .09 })); }
+};
+const hapticsReady = (() => { try { return typeof navigator.vibrate === 'function' && matchMedia('(pointer: coarse)').matches; } catch { return false; } })();
+function haptic(pattern) { if (!hapticsReady) return; try { navigator.vibrate(pattern); } catch { /* Haptics are optional. */ } }
+
+function resultQuality(result) {
+  if (!result) return 'miss';
+  if (['perfect', 'good', 'miss'].includes(result.quality)) return result.quality;
+  if (!result.success) return 'miss';
+  return result.points === 3 || /home run|clean/i.test(result.text || '') ? 'perfect' : 'good';
+}
+function runHistory() { return Array.isArray(game?.history) ? game.history : []; }
+function currentStreak() {
+  if (Number.isFinite(game?.streak)) return game.streak;
+  let count = 0;
+  for (const item of runHistory()) count = item?.success ? count + 1 : 0;
+  return count;
+}
+function bestRunStreak() {
+  if (Number.isFinite(game?.bestStreak)) return game.bestStreak;
+  let count = 0, best = 0;
+  for (const item of runHistory()) { count = item?.success ? count + 1 : 0; best = Math.max(best, count); }
+  return best;
+}
+function flightSeconds() { return Number.isFinite(game?.flightDuration) && game.flightDuration > 0 ? game.flightDuration : 1.2; }
+const historyGlyphs = { perfect: '◆', good: '●', miss: '○' };
+function historySummary() {
+  const counts = { perfect: 0, good: 0, miss: 0 };
+  for (const item of runHistory()) counts[resultQuality(item)]++;
+  return counts;
+}
+function drawHistory(list, animateLast) {
+  const items = runHistory(), config = SPORTS[selected];
+  const slots = Number.isFinite(config.attempts) ? Math.max(config.attempts, items.length) : items.length;
+  const dots = [];
+  for (let i = 0; i < slots; i++) {
+    const li = document.createElement('li');
+    if (i < items.length) li.className = `is-${resultQuality(items[i])}${animateLast && i === items.length - 1 ? ' is-new' : ''}`;
+    dots.push(li);
+  }
+  list.replaceChildren(...dots);
+  const counts = historySummary();
+  list.setAttribute('aria-label', items.length ? `Attempt history: ${counts.perfect} perfect, ${counts.good} good, ${counts.miss} missed` : 'Attempt history: none yet');
+}
+function showStreak() {
+  const streak = currentStreak(), chip = $('streak-chip');
+  chip.hidden = streak < 2;
+  if (streak >= 2) chip.textContent = `${streak} in a row`;
+}
+// game.js owns the label wording; only add the special-shot note when its label doesn't already carry it.
+function shotLabelText() {
+  const shot = game.shot || {}, parts = [typeof shot.label === 'string' ? shot.label.trim() : ''];
+  const has = pattern => pattern.test(parts[0]);
+  if (Number.isFinite(shot.closeout) && !has(/defend|closeout|closing|contest/i)) parts.push('Defender closing');
+  if (shot.money && !has(/money|double/i)) parts.push('Money ball · double points');
+  if (shot.clutch && !has(/sudden|pressure|clutch/i)) parts.push('Sudden pressure');
+  return parts.filter(Boolean).join(' · ');
+}
+function hideShotLabel() { $('shot-label').hidden = true; $('field-wrap').classList.remove('has-shot-label'); }
+function showShotLabel() {
+  lastShot = game.shot;
+  const label = shotLabelText();
+  const element = $('shot-label');
+  element.classList.toggle('is-money', Boolean(game.shot?.money));
+  element.classList.toggle('is-clutch', Boolean(game.shot?.clutch));
+  element.classList.toggle('is-closeout', Number.isFinite(game.shot?.closeout));
+  element.hidden = !label;
+  $('field-wrap').classList.toggle('has-shot-label', Boolean(label));
+  if (!label) return;
+  element.textContent = label;
+  element.style.animation = 'none'; void element.offsetWidth; element.style.animation = '';
+}
+function showCallout(result) {
+  const quality = resultQuality(result), streak = currentStreak();
+  const sub = [];
+  if (result.contested && !/contest/i.test(result.text || '')) sub.push('Contested!');
+  if (Number.isFinite(result.distance) && result.distance > 0) sub.push(`${Math.round(result.distance)} ft`);
+  if (game.shot?.money && result.success && result.points > 0) sub.push(`Money ball +${result.points}`);
+  if (result.success && streak >= 2) sub.push(`${streak} in a row`);
+  const callout = $('callout');
+  $('callout-main').textContent = result.text || '';
+  $('callout-sub').textContent = sub.join(' · ');
+  callout.className = 'callout';
+  void callout.offsetWidth;
+  callout.classList.add(`is-${quality}`);
+  if (result.success && streak >= 2) callout.classList.add('is-streak');
+  if (result.contested) callout.classList.add('is-contested');
+  callout.style.opacity = 1;
+  return sub;
+}
+// Immediate contact cue now; the outcome cue lands when the ball arrives (and waits while paused).
+function playCues(result, byPlayer) {
+  const quality = resultQuality(result), streak = currentStreak(), flight = flightSeconds();
+  const big = Boolean(game.shot?.money || game.shot?.clutch);
+  const cheer = () => { if (quality === 'perfect' || big || (result.success && streak >= 3)) sfx.crowd(big ? 4 : quality === 'perfect' ? Math.max(2, streak) : streak - 1); };
+  const later = (fraction, play) => { pendingCue = { at: flight * fraction, play }; };
+  if (selected === 'baseball') {
+    if (result.success) { sfx.crack(true); later(.35, cheer); }
+    else if (result.contact) { if (/foul/i.test(result.text || '')) sfx.foul(); else sfx.crack(false); }
+    else if (byPlayer) { sfx.whiff(); later(.12, sfx.glove); }
+    else sfx.glove();
+  } else if (selected === 'basketball') {
+    if (!result.success && result.error === undefined) { sfx.buzzer(); return; }
+    sfx.release();
+    if (result.contested) sfx.block();
+    later(.75, result.success ? () => { sfx.swish(quality === 'perfect'); cheer(); } : () => { sfx.clank(); if (big) sfx.groan(); });
+  } else if (selected === 'tennis') {
+    if (result.success) { sfx.pock(quality === 'perfect'); cheer(); }
+    else if (byPlayer) { sfx.whiff(); later(.15, sfx.thud); }
+    else sfx.thud();
+  } else if (selected === 'soccer') {
+    sfx.kick();
+    const missCue = result.over || /over the bar/i.test(result.text || '') ? () => { sfx.bar(); sfx.groan(); } : /wide|post/i.test(result.text || '') ? sfx.post : sfx.save;
+    later(.6, result.success ? () => { sfx.net(); cheer(); } : () => { missCue(); if (big) sfx.groan(); });
+  }
+}
+function hapticFor(result) {
+  const quality = resultQuality(result);
+  const big = Boolean(game.shot?.money || game.shot?.clutch);
+  if (result.contested && !result.success) haptic([30, 30, 30]);
+  else if (result.over || /over the bar/i.test(result.text || '')) haptic([25, 40, 60]);
+  else if (big && result.success) haptic([20, 40, 20, 40, 40]);
+  else haptic(quality === 'perfect' ? [16, 50, 28] : quality === 'good' ? 18 : [45]);
+}
+function selectSport(sport, updateUrl = true) {
+  if (!Object.hasOwn(SPORTS, sport)) return;
+  if (!pinnedDay) day = utcDay();
+  selected = sport;
+  const config = SPORTS[sport];
+  $('share').textContent = 'Copy result';
+  game = createGame(sport, mode === 'daily' ? day : `${Date.now()}:${Math.random()}`);
+  paused = false; finished = false;
+  if (updateUrl) history.replaceState(null, '', `${location.pathname}${location.search}#${sport}`);
+  for (const button of document.querySelectorAll('[data-sport]')) button.setAttribute('aria-pressed', button.dataset.sport === sport);
+  for (const [id, value] of Object.entries({ 'game-title': config.title, 'challenge-copy': config.challenge, 'score-label': config.scoreLabel, 'remaining-label': config.remaining, 'game-plan': config.plan, 'mechanic-title': config.mechanic, 'mechanic-copy': config.help, 'target-note': config.targetNote, 'opening-title': config.opening, 'opening-detail': config.detail, 'instruction': config.instruction, 'input-hint': config.hint, 'field-badge': config.badge })) $(id).textContent = value;
+  $('start').replaceChildren(document.createTextNode(`Play ${sport} `), Object.assign(document.createElement('span'), { textContent: '↗' }));
+  $('action').textContent = config.action;
+  $('mode-label').textContent = mode === 'daily' ? 'DAILY CHALLENGE' : 'PRACTICE SESSION';
+  $('day-label').textContent = mode === 'daily' ? day : 'A fresh setup every game';
+  $('best-label').textContent = mode === 'daily' ? 'Your best for this day' : 'Your practice best';
+  $('daily').setAttribute('aria-pressed', mode === 'daily');
+  $('practice').setAttribute('aria-pressed', mode === 'practice');
+  $('opening').hidden = false; $('pause-overlay').hidden = true; $('result').hidden = true;
+  $('action').disabled = true; $('pause').disabled = true; $('restart').disabled = true;
+  $('action').classList.remove('is-held'); $('callout-main').textContent = ''; $('callout-sub').textContent = ''; $('callout').className = 'callout'; $('callout').style.opacity = 0;
+  hideShotLabel(); $('result-pb').hidden = true; lastShot = null; pendingCue = null;
+  $('aim-controls').hidden = !['soccer', 'tennis'].includes(sport);
+  $('aim').value = 0; $('aim').disabled = false; $('aim-label').textContent = 'Centre';
+  $('height-controls').hidden = sport !== 'soccer'; $('aim-height').disabled = false;
+  $('field-wrap').dataset.scene = sport;
+  if (sport === 'soccer') { if (!Number.isFinite(game.aimY)) game.aimY = .3; showHeight(); }
+  canvas.setAttribute('aria-label', `${sport} game. ${config.instruction} ${config.hint}.`);
+  showBest(); updateScore(); drawHistory($('history'), false); showStreak(); render(canvas, game);
+}
+function updateScore() {
+  const config = SPORTS[selected];
+  $('score').replaceChildren(document.createTextNode(game.score), Object.assign(document.createElement('span'), { textContent: ` / ${config.target}` }));
+  $('remaining').textContent = remaining(game);
+  if (selected === 'tennis' && game.phase !== 'ready') $('instruction').textContent = `Rally: ${game.rally}. Return at the baseline.`;
+}
+function start() {
+  if (game.phase !== 'ready') return;
+  startGame(game); $('opening').hidden = true; $('action').disabled = false; $('pause').disabled = false; $('restart').disabled = false;
+  $('action').focus({ preventScroll: true });
+  showShotLabel();
+  const label = $('shot-label').hidden ? '' : ` First up: ${shotLabelText()}.`;
+  announce(`${SPORTS[selected].challenge} ${SPORTS[selected].instruction}${label}`);
+}
+function feedback(result, byPlayer = false) {
+  if (!result) return;
+  const before = $('score').firstChild?.textContent;
+  const sub = showCallout(result);
+  hideShotLabel();
+  $('action').classList.remove('is-held');
+  try { playCues(result, byPlayer); } catch { /* Audio is optional. */ }
+  hapticFor(result);
+  updateScore(); drawHistory($('history'), true); showStreak();
+  if (String(game.score) !== before) { const score = $('score'); score.classList.remove('bump'); void score.offsetWidth; score.classList.add('bump'); }
+  const extra = sub.length ? ` ${sub.join('. ').replace(/ ft\b/, ' feet')}.` : '';
+  announce(`${result.text}${extra} ${game.score} ${SPORTS[selected].unit}. ${remaining(game)} ${SPORTS[selected].remaining.toLowerCase()}.`);
+}
+function perform() {
+  if (paused || game.phase !== 'playing') return;
+  feedback(act(game), true);
+  $('action').classList.toggle('is-held', game.holding);
+}
+function letGo() {
+  if (paused) return;
+  feedback(release(game), true);
+  $('action').classList.remove('is-held');
+}
+function setAim(value) {
+  if (paused || game.phase === 'flight' || game.phase === 'finished') return;
+  game.aim = clamp(value, -1, 1); $('aim').value = game.aim;
+  $('aim-label').textContent = game.aim < -.15 ? 'Left' : game.aim > .15 ? 'Right' : 'Centre';
+}
+function showHeight() {
+  const y = Number.isFinite(game.aimY) ? game.aimY : .3, label = $('height-label');
+  $('aim-height').value = y;
+  label.textContent = y > .92 ? 'Over the bar' : y >= .66 ? 'High' : y >= .33 ? 'Middle' : 'Low';
+  label.classList.toggle('is-warning', y > .92);
+  $('aim-height').setAttribute('aria-valuetext', `${label.textContent}, ${Math.round(y * 100)} percent`);
+}
+function setHeight(value) {
+  if (selected !== 'soccer' || paused || game.phase === 'flight' || game.phase === 'finished') return;
+  game.aimY = clamp(value, 0, 1); showHeight();
+}
+function pause() {
+  if (!['playing', 'flight'].includes(game.phase)) return;
+  paused = true;
+  if (game.holding) { game.holding = false; game.power = 0; game.time = 0; }
+  $('action').classList.remove('is-held');
+  $('pause-overlay').hidden = false; $('action').disabled = true; $('resume').focus({ preventScroll: true });
+  announce('Game paused. Resume when ready.');
+}
+function finish() {
+  finished = true; pendingCue = null;
+  $('result').hidden = false; $('pause').disabled = true; $('action').disabled = true; $('aim').disabled = true; $('aim-height').disabled = true; hideShotLabel();
+  const win = won(game), config = SPORTS[selected];
+  const previous = store[bestKey()], newBest = !Number.isFinite(previous) ? game.score > 0 : game.score > previous;
+  const bestStreak = bestRunStreak(), counts = historySummary();
+  $('result-outcome').textContent = win ? 'Challenge won' : 'Challenge complete';
+  $('result-title').textContent = win ? 'That’s a clutch finish.' : 'There’s always the next game.';
+  $('result-copy').textContent = `${game.score} ${config.unit}. ${win ? 'Target reached.' : `The target was ${config.target}.`} ${mode === 'daily' ? 'Replay the same daily setup, or switch to practice.' : 'Play again for a fresh setup.'}`;
+  $('result-pb').textContent = Number.isFinite(previous) ? 'New personal best' : 'First best on the board';
+  $('result-pb').hidden = !newBest;
+  drawHistory($('result-history'), false);
+  $('result-stats').textContent = `Best streak ${bestStreak} · ${counts.perfect} perfect · ${counts.good} good · ${counts.miss} missed`;
+  if (!Number.isFinite(previous) || game.score > previous) {
+    store[bestKey()] = game.score;
+    // Keep recent daily records and all four practice bests, without unbounded growth.
+    const keys = Object.keys(store).sort((a, b) => a.slice(a.indexOf(':') + 1).localeCompare(b.slice(b.indexOf(':') + 1)));
+    for (const key of keys.slice(0, Math.max(0, keys.length - 160))) delete store[key];
+    try { localStorage.setItem('clutch-bests', JSON.stringify(store)); }
+    catch { $('storage-note').textContent = 'Storage unavailable. Bests last for this visit.'; }
+    showBest();
+  }
+  try { if (win) sfx.win(); else sfx.lose(); if (newBest) sfx.best(); } catch { /* Audio is optional. */ }
+  haptic(win ? [30, 60, 30, 60, 70] : [70]);
+  announce(`${$('result-title').textContent} ${newBest ? `${$('result-pb').textContent}. ` : ''}${$('result-copy').textContent} Best streak ${bestStreak}.`);
+  $('replay').focus({ preventScroll: true });
+  window.dispatchEvent(new CustomEvent('clutch:result', { detail: { sport: selected, day, mode, score: game.score, attempts: game.used, won: win, bestStreak, newBest, perfects: counts.perfect, history: runHistory().map(resultQuality) } }));
+}
+
+document.querySelectorAll('[data-sport]').forEach(button => button.addEventListener('click', () => selectSport(button.dataset.sport)));
+for (const name of ['daily', 'practice']) $(name).addEventListener('click', () => { mode = name; selectSport(selected); });
+$('start').addEventListener('click', start);
+$('restart').addEventListener('click', () => selectSport(selected));
+$('replay').addEventListener('click', () => { selectSport(selected); start(); });
+$('pause').addEventListener('click', pause);
+$('resume').addEventListener('click', () => { paused = false; lastFrame = performance.now(); $('pause-overlay').hidden = true; $('action').disabled = game.phase !== 'playing'; $('action').focus({ preventScroll: true }); });
+$('aim').addEventListener('input', event => setAim(Number(event.target.value)));
+$('aim-height').addEventListener('input', event => setHeight(Number(event.target.value)));
+$('sound').addEventListener('click', async () => { sound = !sound; $('sound').setAttribute('aria-pressed', sound); $('sound').textContent = sound ? 'Sound on' : 'Sound off'; if (sound) { try { audio ??= new AudioContext(); await audio.resume(); } catch {} } });
+$('action').addEventListener('pointerdown', event => { if (event.button !== 0) return; event.preventDefault(); $('action').setPointerCapture(event.pointerId); perform(); });
+$('action').addEventListener('pointerup', letGo);
+$('action').addEventListener('pointercancel', pause);
+$('action').addEventListener('click', event => { if (event.detail === 0 && !game.holding) { perform(); if (selected === 'basketball') announce('Shot charging. Activate again to release.'); } else if (event.detail === 0) letGo(); });
+canvas.addEventListener('pointerdown', event => {
+  if (event.button !== 0 || game.phase !== 'playing' || paused) return;
+  event.preventDefault(); canvas.setPointerCapture(event.pointerId);
+  if (selected === 'soccer' || selected === 'tennis') {
+    const rect = canvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / rect.width * 1000, y = (event.clientY - rect.top) / rect.height * 650;
+    setAim((x - 500) / (selected === 'soccer' ? 230 : 390));
+    // Goal box in canvas space (agreed with render.js): ball height y = 252 - aimY * 136 (bar at aimY .92, y 127).
+    if (selected === 'soccer' && x >= 200 && x <= 800 && y >= 90 && y <= 290) setHeight((252 - y) / 136);
+  } else perform();
+});
+canvas.addEventListener('pointerup', letGo);
+canvas.addEventListener('pointercancel', pause);
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') { pause(); return; }
+  if (event.target instanceof HTMLInputElement) return;
+  if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && ['soccer', 'tennis'].includes(selected)) { event.preventDefault(); setAim(game.aim + (event.key === 'ArrowLeft' ? -.08 : .08)); }
+  if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && selected === 'soccer' && game.phase === 'playing') { event.preventDefault(); setHeight((Number.isFinite(game.aimY) ? game.aimY : .3) + (event.key === 'ArrowUp' ? .08 : -.08)); }
+  if (event.code !== 'Space' || event.repeat || ![canvas, $('action'), document.body].includes(event.target)) return;
+  event.preventDefault(); perform();
+});
+document.addEventListener('keyup', event => { if (event.code === 'Space' && game.holding) { event.preventDefault(); letGo(); } });
+document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+window.addEventListener('blur', pause);
+window.addEventListener('hashchange', () => selectSport(location.hash.slice(1), false));
+$('share').addEventListener('click', async () => {
+  const url = new URL(location.href);
+  if (mode === 'daily') url.searchParams.set('day', day); else url.searchParams.delete('day');
+  if (mode === 'practice') url.searchParams.set('mode', 'practice'); else url.searchParams.delete('mode');
+  const glyphs = runHistory().map(item => historyGlyphs[resultQuality(item)]).join('');
+  const streakNote = bestRunStreak() >= 2 ? ` · best streak ${bestRunStreak()}` : '';
+  const result = `Clutch ${selected}: ${game.score} ${SPORTS[selected].unit}${mode === 'daily' ? ` · ${day}` : ' · Practice'}\n${glyphs ? `${glyphs}${streakNote}\n` : ''}${url.href}`;
+  try { await navigator.clipboard.writeText(result); $('share').textContent = 'Copied!'; }
+  catch { $('share').textContent = 'Copy unavailable'; announce(`Copy this result: ${result}`); $('result-copy').textContent = result; }
+});
+
+function frame(now) {
+  const seconds = lastFrame ? Math.min((now - lastFrame) / 1000, .05) : 0;
+  lastFrame = now;
+  if (!paused && ['playing', 'flight'].includes(game.phase)) {
+    feedback(advance(game, seconds));
+    if (pendingCue && (game.phase !== 'flight' || game.shotTime >= pendingCue.at)) { const cue = pendingCue; pendingCue = null; if (game.phase === 'flight') { try { cue.play(); } catch { /* Audio is optional. */ } } }
+    if (game.phase === 'playing') {
+      $('action').disabled = false;
+      if (game.shot !== lastShot) { $('callout').style.opacity = 0; showShotLabel(); if (!$('shot-label').hidden) announce(`Next: ${shotLabelText()}.`); }
+    }
+    else $('action').disabled = true;
+    if (game.phase === 'finished' && !finished) finish();
+  }
+  // Render every frame in ready and finished too, so render.js can finish its celebrations and idle motion.
+  // Skip while paused: the overlay covers the field and the last frame stays on screen, which saves battery.
+  if (!paused) render(canvas, game);
+  requestAnimationFrame(frame);
+}
+selectSport(selected, false);
+requestAnimationFrame(frame);
+
+</script>
+</body>
+</html>
