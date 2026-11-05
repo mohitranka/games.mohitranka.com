@@ -43,16 +43,57 @@ export function createCalibration({ tuning }) {
     holdStart = null;
   }
 
-  function both(tracker, pred) {
-    return HANDS.every((h) => tracker.slots[h].seenNow && pred(tracker.slots[h], h));
+  // D3a: tracking quality over the last framingTrackWindowMs (share of results with both hands seen)
+  const trackHist = []; // {t, both}
+  function trackRatio(t) {
+    while (trackHist.length && trackHist[0].t < t - tuning.framingTrackWindowMs / 1000 - 1e-9) trackHist.shift();
+    if (!trackHist.length) return 0;
+    return trackHist.filter((x) => x.both).length / trackHist.length;
   }
+  const windowFull = (t) => trackHist.length && t - trackHist[0].t >= tuning.framingTrackWindowMs / 1000 - 0.05;
 
-  function framingHint(tracker) {
+  /**
+   * The failing condition on this result, most basic first, or null when all pass (D3a: each failure names itself).
+   * step 'framing' adds the vertical band, the 2 s tracking quality and (with a face box) the chin-height check;
+   * step 'guard' adds stillness.
+   */
+  function failing(tracker, t, step, face) {
     const s = tracker.slots;
-    if (!both(tracker, (sl) => sl.fist)) return CALIB_HINT.SHOW_BOTH_FISTS;
+    if (!HANDS.every((h) => s[h].seenNow)) return CALIB_HINT.SHOW_BOTH_FISTS;
+    if (!HANDS.every((h) => s[h].fist)) return CALIB_HINT.MAKE_FISTS;
+    // tracking quality is judged once 2 s of history exist; the 1 s stable hold may run while the window fills
+    if (step === 'framing' && windowFull(t) && trackRatio(t) < tuning.framingTrackMin) return CALIB_HINT.TRACKING_POOR;
     if (HANDS.some((h) => s[h].raw.k < tuning.framingKMin)) return CALIB_HINT.MOVE_CLOSER;
     if (HANDS.some((h) => s[h].raw.k > tuning.framingKMax)) return CALIB_HINT.MOVE_BACK;
+    if (step === 'framing') {
+      if (HANDS.some((h) => s[h].raw.y < tuning.framingYMin)) return CALIB_HINT.FISTS_TOO_HIGH;
+      if (HANDS.some((h) => s[h].raw.y > tuning.framingYMax)) return CALIB_HINT.FISTS_TOO_LOW;
+      if (face && tuning.calibUseFace) {
+        const chin = face.y + face.h / 2; // bottom of the face box (frame heights)
+        if (HANDS.some((h) => s[h].raw.y > chin + tuning.guardChinBelowMax)) return CALIB_HINT.GUARD_TO_CHIN;
+      }
+    }
+    if (step === 'guard' && HANDS.some((h) => Math.hypot(s[h].vx, s[h].vy / tracker.aspect) >= tuning.calibStillSpeed)) {
+      return CALIB_HINT.HOLD_STILL;
+    }
     return null;
+  }
+
+  /**
+   * D3a hold: runs on passing results and keeps its last state through failures of up to calibHoldGraceMs; a longer
+   * failure restarts it. Returns {ok, progress, reset}.
+   */
+  let lastOkT = -Infinity;
+  function hold(t, ok, needMs) {
+    if (ok) {
+      if (holdStart === null) holdStart = t;
+      lastOkT = t;
+    } else if (holdStart !== null && t - lastOkT > tuning.calibHoldGraceMs / 1000 + 1e-9) {
+      holdStart = null; // failed for longer than the grace: start again
+      return { ok, progress: 0, reset: true };
+    }
+    if (holdStart === null) return { ok, progress: 0, reset: false };
+    return { ok, progress: clamp((t - holdStart) / (needMs / 1000), 0, 1), reset: false };
   }
 
   function buildProfile(hands) {
@@ -64,6 +105,8 @@ export function createCalibration({ tuning }) {
     begin(session, t) {
       st = { ...createCalibrationStatus(), active: true, session, step: 'framing', hint: CALIB_HINT.SHOW_BOTH_FISTS };
       toStep('framing', t);
+      trackHist.length = 0;
+      lastOkT = -Infinity;
       guardSamples = null;
       peaks = [];
       provisional = null;
@@ -90,70 +133,54 @@ export function createCalibration({ tuning }) {
      * @param {ReturnType<import('./hand-tracker.js').createHandTracker>} tracker
      * @param {number} t
      * @param {object[]} punches  recognizer output for this result (with `peak`)
+     * @param {{y:number, h:number}|null} [face]  D3a/D13: latest face box (?next=1 only) for the chin-height check
      * @returns {import('../shared/types.js').CalibrationProfile|null}  the profile when the session completes
      */
-    update(tracker, t, punches) {
+    update(tracker, t, punches, face = null) {
       if (!st.active) return null;
       for (const h of HANDS) {
         const s = tracker.slots[h];
         landmarks[h] = s.raw && t - s.lastSeen <= tuning.lossGraceMs / 1000 ? mirroredPoints(s.raw.lm) : [];
       }
 
+      trackHist.push({ t, both: HANDS.every((h) => tracker.slots[h].seenNow) });
+
       if (st.step === 'framing') {
-        const hint = framingHint(tracker);
-        st.hint = hint;
-        if (hint) {
-          holdStart = null;
-          st.progress = 0;
-        } else {
-          if (holdStart === null) holdStart = t;
-          st.progress = clamp((t - holdStart) / (tuning.calibFramingHoldMs / 1000), 0, 1);
-          if (st.progress >= 1) {
-            toStep('guard', t);
-            st.hint = CALIB_HINT.HOLD_GUARD;
-          }
+        const fail = failing(tracker, t, 'framing', face);
+        const h = hold(t, !fail, tuning.calibFramingHoldMs);
+        st.hint = fail;
+        st.progress = h.progress;
+        if (!fail && h.progress >= 1 && windowFull(t)) { // stable 1 s AND ≥ 80 % two-hand tracking over 2 s
+          toStep('guard', t);
+          st.hint = CALIB_HINT.HOLD_GUARD;
         }
         return null;
       }
 
       if (st.step === 'guard') {
-        const okFrame = !framingHint(tracker);
-        const still = okFrame && both(tracker, (s) => Math.hypot(s.vx, s.vy / tracker.aspect) < tuning.calibStillSpeed);
-        if (!okFrame) {
-          st.hint = framingHint(tracker);
-          holdStart = null;
-          guardSamples = null;
-          st.progress = 0;
-          return null;
+        const fail = failing(tracker, t, 'guard', face);
+        const h = hold(t, !fail, tuning.calibGuardHoldMs);
+        if (h.reset || holdStart === null) guardSamples = null;
+        st.hint = fail ?? CALIB_HINT.HOLD_GUARD;
+        st.progress = h.progress;
+        if (!fail) {
+          guardSamples ??= { left: [], right: [] };
+          for (const hand of HANDS) {
+            const s = tracker.slots[hand];
+            guardSamples[hand].push({ x: s.raw.x, y: s.raw.y, k: s.raw.k, rate: s.rate });
+          }
         }
-        if (!still) {
-          st.hint = holdStart !== null ? CALIB_HINT.HOLD_STILL : CALIB_HINT.HOLD_GUARD;
-          holdStart = null;
-          guardSamples = null;
-          st.progress = 0;
-          return null;
-        }
-        if (holdStart === null) {
-          holdStart = t;
-          guardSamples = { left: [], right: [] };
-        }
-        st.hint = CALIB_HINT.HOLD_GUARD;
-        for (const h of HANDS) {
-          const s = tracker.slots[h];
-          guardSamples[h].push({ x: s.raw.x, y: s.raw.y, k: s.raw.k, rate: s.rate });
-        }
-        st.progress = clamp((t - holdStart) / (tuning.calibGuardHoldMs / 1000), 0, 1);
-        if (st.progress >= 1) {
+        if (!fail && h.progress >= 1) {
           const hands = {};
-          for (const h of HANDS) {
-            const g = guardSamples[h];
+          for (const hand of HANDS) {
+            const g = guardSamples[hand];
             const noise = std(g.slice(Math.min(3, g.length - 2)).map((s) => s.rate)); // skip the first rate samples
-            hands[h] = {
+            hands[hand] = {
               kGuard: median(g.map((s) => s.k)),
               center: { x: mean(g.map((s) => s.x)), y: mean(g.map((s) => s.y)) },
               noise,
               straightThreshold: tuning.calibProvisionalThreshold,
-              straightRateFull: DEFAULT_PROFILE.hands[h].straightRateFull,
+              straightRateFull: DEFAULT_PROFILE.hands[hand].straightRateFull,
             };
           }
           provisional = buildProfile(hands);
@@ -203,7 +230,11 @@ export function createCalibration({ tuning }) {
     /** @returns {import('../shared/types.js').CalibrationStatus} */
     status() {
       const out = { ...st };
-      if (st.active) out.landmarks = { left: landmarks.left, right: landmarks.right };
+      if (st.active) {
+        out.landmarks = { left: landmarks.left, right: landmarks.right };
+        // D3a: the vertical band framing checks (TA draws the target box from it)
+        out.framingBand = { yMin: tuning.framingYMin, yMax: tuning.framingYMax, xMin: 0.22, xMax: 0.78 };
+      }
       return out;
     },
   };

@@ -47,6 +47,7 @@ export {};
  * @property {string|null} hint     one of CALIB_HINT
  * @property {boolean} done         a profile from THIS session is ready
  * @property {{left:number[][], right:number[][]}} [landmarks]  21 mirrored [x,y] per hand; ONLY while active
+ * @property {{yMin:number, yMax:number, xMin:number, xMax:number}} [framingBand]  D3a: the band framing checks (target box); only while active
  */
 
 /**

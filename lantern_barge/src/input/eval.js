@@ -38,7 +38,7 @@ export function runRecognizer(rec, { tuning = defaultTuning, profile = null } = 
     pipeline.setProfile(calib.provisionalProfile ?? calibrated ?? profile ?? DEFAULT_PROFILE);
     const out = pipeline.ingest({ t, w: rec.header.w, h: rec.header.h, hands: r.hands });
     if (calib.active) {
-      const done = calib.update(pipeline.tracker, t, out.punches);
+      const done = calib.update(pipeline.tracker, t, out.punches, tuning.calibUseFace ? r.face ?? null : null);
       if (done) {
         calibrated = done;
         calibEndMs = r.t;

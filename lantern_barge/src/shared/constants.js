@@ -137,6 +137,12 @@ export const CALIB_HINT = Object.freeze({
   THROW_STRAIGHT: 'throw_straight',
   NOT_SEEN: 'not_seen',
   RETURN_TO_SPOT: 'return_to_spot', // between rounds, k at guard drifted > 15% (D5)
+  // D3a framing / hold hints (each names the failing condition)
+  MAKE_FISTS: 'make_fists', // both hands seen, one open
+  TRACKING_POOR: 'tracking_poor', // both hands seen in < 80 % of results over 2 s
+  FISTS_TOO_HIGH: 'fists_too_high', // palm centre above framingYMin
+  FISTS_TOO_LOW: 'fists_too_low', // palm centre below framingYMax
+  GUARD_TO_CHIN: 'guard_to_chin', // ?next=1: fists > 0.10 fh below the bottom of the face box
 });
 
 export const THREE_VERSION = '0.170.0';

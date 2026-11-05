@@ -16,6 +16,7 @@ function createHandRec() {
     wasSeen: false, wasFist: false,
     riseTimes: [], // D11 two-hand reject: result times when this fist was rising faster than 0.7 × threshold
     pArmed: false, pOnset: 0, pX0: 0, pSamples: 0, lastParry: -Infinity, // D12 parry
+    zoneLastT: -Infinity, // D3a: last result time this hand was seen in the guard zone
     outTimes: [], // D12 two-hand reject: result times when this fist was swiping outward faster than 0.7 × threshold
   };
 }
@@ -263,26 +264,31 @@ export function createRecognizer({ tuning }) {
   function inZone(tracker, hand, t, profile) {
     const s = tracker.slots[hand];
     const r = rec[hand];
-    if (!s.seenNow || !s.fist || r.sArmed || r.hArmed || r.uArmed || t < r.lockoutUntil - EPS) return false;
+    if (r.sArmed || r.hArmed || r.uArmed || t < r.lockoutUntil - EPS) {
+      r.zoneLastT = -Infinity; // punching: no grace carries over
+      return false;
+    }
+    if (!s.seenNow) {
+      // D3a per-hand grace: a hand lost while in the zone keeps counting for up to guardGraceMs (300 ms)
+      return t - r.zoneLastT <= tuning.guardGraceMs / 1000 + EPS;
+    }
     const c = profile.hands[hand].center;
     const d = Math.hypot((s.dispX - c.x) * tracker.aspect, s.dispY - c.y); // frame heights
-    if (d > tuning.guardRadius) return false;
     const kr = s.raw.k / profile.hands[hand].kGuard;
-    return kr >= tuning.guardRatioBand[0] && kr <= tuning.guardRatioBand[1];
+    const ok = s.fist && d <= tuning.guardRadius && kr >= tuning.guardRatioBand[0] && kr <= tuning.guardRatioBand[1];
+    r.zoneLastT = ok ? t : -Infinity;
+    return ok;
   }
 
-  function updateGuard(tracker, { t, seen }, profile) {
+  function updateGuard(tracker, { t }, profile) {
     guard.lastResultT = t;
     const l = inZone(tracker, 'left', t, profile);
     const r = inZone(tracker, 'right', t, profile);
-    let raw = l && r;
+    const raw = l && r; // D3a: each hand carries its own 300 ms grace (replaces D3's "both lost" rule)
     if (raw) guard.lastRawT = t;
-    else if (!seen.left && !seen.right && t - guard.lastRawT <= tuning.guardGraceMs / 1000 + EPS) {
-      raw = true; // both hands lost inside the guard zone: grace (D3)
-    }
     guard.raw = raw;
-    guard.left = l || (raw && !seen.left);
-    guard.right = r || (raw && !seen.right);
+    guard.left = l;
+    guard.right = r;
     if (raw) {
       guard.outSince = null;
       if (guard.inSince === null) guard.inSince = t;

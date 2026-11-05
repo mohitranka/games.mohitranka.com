@@ -4,7 +4,7 @@
 // and the recorder with its prompt script. TA may restyle via the .dbg-* classes; layout-critical styles are inline.
 
 import { HANDS } from '../shared/constants.js';
-import { createRecorder, PROMPT_SCRIPTS } from './recorder.js';
+import { createRecorder, PROMPT_SCRIPTS, scriptDurationS } from './recorder.js';
 
 const HISTORY_S = 4;
 const COLORS = { left: '#4aa3ff', right: '#ffa04a', thr: '#e5484d', grid: 'rgba(255,255,255,0.12)', text: '#ddd' };
@@ -49,17 +49,32 @@ export function createDebugOverlay({ root, getSource, tuning, setTuning }) {
   document.body.append(prompt);
 
   // ── recorder panel
-  const subject = el('input', { placeholder: 'subject', size: 8 });
-  const distance = el('input', { placeholder: 'distance (e.g. 1.1m)', size: 12 });
-  const lighting = el('input', { placeholder: 'lighting', size: 8 });
+  // D3a: all three labels are required; the expected length shows before Record
+  const subject = el('input', { placeholder: 'subject *', size: 8, required: true });
+  const distance = el('input', { placeholder: 'distance * (e.g. 1.1m)', size: 12, required: true });
+  const lighting = el('input', { placeholder: 'lighting *', size: 8, required: true });
   const scriptSel = el('select', {}, ...Object.keys(PROMPT_SCRIPTS).map((k) => el('option', { value: k }, k)));
+  const recLength = el('span', { class: 'dbg-rec-length' });
+  const fmtDur = (s) => (s >= 90 ? `about ${Math.round(s / 60)} min` : `about ${Math.round(s)} s`);
+  const showLength = () => (recLength.textContent = `${fmtDur(scriptDurationS(scriptSel.value))}, plus a 3 s pre-roll with both fists in view`);
+  scriptSel.addEventListener('change', showLength);
+  showLength();
   const recStatus = el('span', { class: 'dbg-rec-status' });
   let recorder = null;
-  const startBtn = el('button', { type: 'button', onclick: () => api.startRecording() }, 'Record');
+  const startBtn = el('button', {
+    type: 'button',
+    onclick: () => {
+      try {
+        api.startRecording();
+      } catch (err) {
+        recStatus.textContent = String(err.message ?? err);
+      }
+    },
+  }, 'Record');
   const stopBtn = el('button', { type: 'button', onclick: () => recorder?.stop() }, 'Stop + save');
   const recPanel = el('details', { class: 'dbg-rec' }, el('summary', {}, 'Recorder'),
     el('div', { style: 'display:flex;flex-wrap:wrap;gap:4px;margin:4px 0' }, subject, distance, lighting, scriptSel, startBtn, stopBtn),
-    recStatus);
+    recLength, el('br'), recStatus);
 
   // ── tuning sliders
   const copyBtn = el('button', { type: 'button', onclick: () => api.copyText() }, 'Copy tuning JSON');
@@ -235,7 +250,11 @@ export function createDebugOverlay({ root, getSource, tuning, setTuning }) {
         : `${p.tCommit.toFixed(2)} ${p.hand} ${p.target === 'body' ? 'BODY ' : ''}${p.punchType} p=${p.power}${p.inferred ? ' (rescue)' : ''} onset→commit ${((p.tCommit - p.tOnset) * 1000).toFixed(0)} ms`)).reverse().join('\n');
       startBtn.disabled = !(source?.kind === 'camera') || !!recorder?.running;
       stopBtn.disabled = !recorder?.running;
-      if (recorder?.running) recStatus.textContent = `recording… ${recorder.count} results`;
+      if (recorder?.running) {
+        recStatus.textContent = recorder.phase === 'preroll'
+          ? `pre-roll: waiting for both fists (${Math.round(recorder.prerollRatio * 100)}% of 80% needed)`
+          : `recording… ${recorder.count} results`;
+      }
     },
 
     /** JSON of all three tuning objects; also written to the clipboard when allowed. */
@@ -260,17 +279,18 @@ export function createDebugOverlay({ root, getSource, tuning, setTuning }) {
     },
 
     /** Start the recorder on the camera source. Resolves `recorder.done` with {rec, jsonl, filename}. */
-    startRecording({ script = scriptSel.value, download = true } = {}) {
+    startRecording({ script = scriptSel.value, download = true, meta = null, preroll = undefined } = {}) {
       const source = getSource();
       if (source?.kind !== 'camera') throw new Error('recording needs the camera source');
       recorder = createRecorder({
         source,
         script,
-        meta: { subject: subject.value, distance: distance.value, lighting: lighting.value },
+        meta: meta ?? { subject: subject.value, distance: distance.value, lighting: lighting.value },
         onPrompt: (text) => (prompt.textContent = text),
+        ...(preroll !== undefined ? { preroll } : {}),
       });
       recorder.done.then((f) => {
-        recStatus.textContent = `saved ${f.filename} (${f.rec.results.length} results, ${f.rec.cues.length} cues)`;
+        recStatus.textContent = `saved ${f.filename} (${f.rec.results.length} results, ${f.rec.cues.length} cues${f.rec.header.incomplete ? ', INCOMPLETE' : ''})`;
         if (download) recorder.download();
         setTimeout(() => (prompt.textContent = ''), 1500);
       });

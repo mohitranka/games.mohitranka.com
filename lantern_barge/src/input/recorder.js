@@ -95,14 +95,29 @@ export function buildTimeline(steps) {
   return tl;
 }
 
+/** Length of a prompt script in seconds (the overlay shows it before Record; D3a). */
+export function scriptDurationS(script) {
+  const steps = PROMPT_SCRIPTS[script];
+  if (!steps) throw new Error(`unknown prompt script ${script}`);
+  return buildTimeline(steps).at(-1).at;
+}
+
+export const REQUIRED_LABELS = Object.freeze(['subject', 'distance', 'lighting']);
+/** D3a pre-roll: cues start only after both hands were tracked in ≥ minRatio of results over the last `seconds`. */
+export const DEFAULT_PREROLL = Object.freeze({ seconds: 3, minRatio: 0.8 });
+
 /**
  * @param {{source: {onRaw:(fn:Function) => Function, detectorStats?:object}, script?:string,
- *   meta?:{subject?:string, distance?:string, lighting?:string}, onPrompt?:(text:string) => void}} opts
+ *   meta:{subject:string, distance:string, lighting:string}, onPrompt?:(text:string) => void,
+ *   preroll?:{seconds:number, minRatio:number}|null}} opts
+ *   D3a: all three labels are required; `preroll: null` skips the two-hand gate (headless fake-camera specs only).
  */
-export function createRecorder({ source, script = 'full', meta = {}, onPrompt = () => {} }) {
+export function createRecorder({ source, script = 'full', meta = {}, onPrompt = () => {}, preroll = DEFAULT_PREROLL }) {
   if (!source?.onRaw) throw new Error('recorder needs the camera hand source');
   const steps = PROMPT_SCRIPTS[script];
   if (!steps) throw new Error(`unknown prompt script ${script}`);
+  const missing = REQUIRED_LABELS.filter((k) => !String(meta[k] ?? '').trim());
+  if (missing.length) throw new Error(`recorder needs labels: ${missing.join(', ')}`);
   const timeline = buildTimeline(steps);
   const results = [];
   const cues = [];
@@ -112,6 +127,9 @@ export function createRecorder({ source, script = 'full', meta = {}, onPrompt = 
   let timer = 0;
   let next = 0;
   let running = false;
+  let phase = 'idle'; // 'preroll' | 'recording' | 'done'
+  let completed = false; // the script reached its end (otherwise the header says incomplete)
+  const preHist = []; // {ts, both}
   let finished = null;
   let resolveDone;
   const done = new Promise((r) => (resolveDone = r));
@@ -123,6 +141,7 @@ export function createRecorder({ source, script = 'full', meta = {}, onPrompt = 
       onPrompt(ev.text);
       if (ev.cue) cues.push({ kind: 'cue', t: Math.round(ev.at * 1000), expect: ev.cue.expect, segment: ev.cue.segment });
       if (ev.end) {
+        completed = true;
         stop();
         return;
       }
@@ -132,6 +151,7 @@ export function createRecorder({ source, script = 'full', meta = {}, onPrompt = 
   function stop() {
     if (!running) return finished;
     running = false;
+    phase = 'done';
     clearInterval(timer);
     unsub?.();
     const stats = source.detectorStats ?? {};
@@ -143,6 +163,7 @@ export function createRecorder({ source, script = 'full', meta = {}, onPrompt = 
         delegate: stats.delegate ?? null, ua: navigator.userAgent, script,
         subject: meta.subject || 'anon', distance: meta.distance || 'unknown', lighting: meta.lighting || 'unknown',
         recordedAt: new Date().toISOString(),
+        ...(completed ? {} : { incomplete: true }), // D3a: stopped before the script ended
       },
       results,
       cues,
@@ -166,17 +187,44 @@ export function createRecorder({ source, script = 'full', meta = {}, onPrompt = 
     get count() {
       return results.length;
     },
+    /** 'idle' | 'preroll' (waiting for both hands) | 'recording' | 'done' */
+    get phase() {
+      return phase;
+    },
+    /** Two-hand share over the pre-roll window so far (0..1). */
+    get prerollRatio() {
+      return preHist.length ? preHist.filter((x) => x.both).length / preHist.length : 0;
+    },
+    get durationS() {
+      return timeline.at(-1).at;
+    },
     start() {
       if (running) return;
       running = true;
-      t0 = performance.now();
+      const begin = (at) => {
+        phase = 'recording';
+        t0 = at;
+        timer = setInterval(step, 30);
+        step();
+      };
+      phase = 'preroll';
+      const startedAt = performance.now();
       unsub = source.onRaw((r) => {
-        if (r.ts < t0) return;
+        if (phase === 'preroll') {
+          if (r.ts < startedAt) return;
+          preHist.push({ ts: r.ts, both: (r.hands?.length ?? 0) >= 2 });
+          while (preHist.length && preHist[0].ts < r.ts - preroll.seconds * 1000) preHist.shift();
+          const ratio = preHist.filter((x) => x.both).length / preHist.length;
+          const span = (r.ts - startedAt) / 1000;
+          onPrompt(`Get ready: both fists in view, guard up (${Math.round(ratio * 100)}% tracked)`);
+          if (span >= preroll.seconds - 0.05 && ratio >= preroll.minRatio) begin(r.ts);
+          return; // pre-roll results are not recorded
+        }
+        if (phase !== 'recording' || r.ts < t0) return;
         size = { w: r.w, h: r.h };
         results.push({ t: Math.round((r.ts - t0) * 1000) / 1000, hands: r.hands, pipe: Math.round(r.arrival - r.ts), ...(r.face !== undefined ? { face: r.face } : {}) });
       });
-      timer = setInterval(step, 30);
-      step();
+      if (!preroll) begin(performance.now());
     },
     stop,
     /** Save the finished recording through a download link. */

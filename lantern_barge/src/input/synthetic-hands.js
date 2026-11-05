@@ -180,7 +180,7 @@ export function synthRecording({ fps = 30, durS, w = 1280, h = 720, noisePx = 0,
  *   punches?:Array<[string, string]>, idleS?:number}} [o]
  */
 export function synthSession({
-  seed = 7, fps = 30, noisePx = 1, kGuard = 0.11, reactS = 0.1, idleS = 12, calibStraights = [2.6, 4.1, 5.6],
+  seed = 7, fps = 30, noisePx = 1, kGuard = 0.11, reactS = 0.1, idleS = 12, drop = undefined, calibStraights = [4.4, 5.9, 7.4], // after D3a framing (2 s window + 1 s stable) and the 1.5 s guard hold
   punches = [['left', 'straight'], ['right', 'straight'], ['left', 'hook'], ['right', 'hook'], ['right', 'straight'], ['left', 'hook']],
 } = {}) {
   const base = {
@@ -194,8 +194,8 @@ export function synthSession({
     cues.push({ t, expect: { hand: 'any', punchType: 'straight' }, segment: 'calib' });
     moves.push({ hand, type: 'straight', t0: t + reactS });
   });
-  cues.push({ t: 7, expect: null, segment: 'guard' });
-  let t = 9;
+  cues.push({ t: 8.8, expect: null, segment: 'guard' });
+  let t = 10.8;
   for (const [hand, type] of punches) {
     cues.push({ t, expect: { hand, punchType: type }, segment: 'punch' });
     moves.push({ hand, type, t0: t + reactS });
@@ -219,5 +219,5 @@ export function synthSession({
       }
       return sp;
     });
-  return synthRecording({ fps, durS, noisePx, seed, specs, cues, header: { script: 'synthetic-session' } });
+  return synthRecording({ fps, durS, noisePx, seed, specs, cues, drop, header: { script: 'synthetic-session' } });
 }

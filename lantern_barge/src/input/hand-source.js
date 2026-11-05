@@ -59,7 +59,8 @@ export function createHandSource({ backend, clock, tuning, recording = null, cal
     pipeline.setProfile(activeProfile());
     const { punches } = pipeline.ingest(result);
     if (calib.active) {
-      const done = calib.update(pipeline.tracker, result.t, punches);
+      const face = tuning.calibUseFace && lastFace && result.t - lastFaceT <= tuning.headGraceMs / 1000 ? lastFace : null;
+      const done = calib.update(pipeline.tracker, result.t, punches, face);
       if (done) calibratedProfile = done;
       // punches thrown while calibrating belong to calibration, not to the game
     } else {
@@ -155,6 +156,12 @@ export function createHandSource({ backend, clock, tuning, recording = null, cal
         gpuPaceFrames: tuning.gpuPaceFrames,
         face, // D13 spike: run the face detector too (?next=1)
         faceSlowMs: tuning.faceSlowMs,
+        confidences: {
+          // D3a: MediaPipe thresholds from tuning (debug override: ?mpconf=det,pres,track)
+          minHandDetectionConfidence: tuning.minHandDetectionConfidence,
+          minHandPresenceConfidence: tuning.minHandPresenceConfidence,
+          minTrackingConfidence: tuning.minTrackingConfidence,
+        },
         onResult: (m) => {
           const hands = m.hands ?? [];
           const faceRec = m.faceRan ? (m.face ?? null) : undefined; // undefined = not run this frame

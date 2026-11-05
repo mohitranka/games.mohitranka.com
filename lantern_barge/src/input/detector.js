@@ -8,7 +8,7 @@ const INIT_TIMEOUT_MS = 90000;
  * @param {{prefer?:'GPU'|'CPU', gpuSetupMs?:number, onResult:(r:object) => void, onDelegate?:(d:string) => void}} opts
  *   onResult gets {ts (capture perf ms), arrival (perf ms), ms, w, h, hands, failed?}
  */
-export function createDetector({ prefer = 'GPU', gpuSetupMs = 8000, gpuSlowInferMs = 100, gpuPaceFrames = 5, face = false, faceSlowMs = 8, onResult, onDelegate = () => {} }) {
+export function createDetector({ prefer = 'GPU', gpuSetupMs = 8000, gpuSlowInferMs = 100, gpuPaceFrames = 5, face = false, faceSlowMs = 8, confidences = {}, onResult, onDelegate = () => {} }) {
   let worker = null;
   let inFlight = false;
   let stopped = false;
@@ -83,7 +83,7 @@ export function createDetector({ prefer = 'GPU', gpuSetupMs = 8000, gpuSlowInfer
           fail(new Error(m.message));
         }
       };
-      w.postMessage({ type: 'init', prefer: pref, gpuSlowInferMs, gpuPaceFrames, face, faceSlowMs });
+      w.postMessage({ type: 'init', prefer: pref, gpuSlowInferMs, gpuPaceFrames, face, faceSlowMs, ...confidences });
     });
   }
 

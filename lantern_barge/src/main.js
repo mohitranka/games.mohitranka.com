@@ -42,6 +42,15 @@ inputTuning.enableUppercut = FEATURES.uppercut; // D11 camera uppercut only with
 inputTuning.guardParity = FEATURES.uppercut; // P1a/P1b guard return + keyboard guard delay ship with M5 (?next=1)
 inputTuning.enableBody = FEATURES.body; // D12 camera body shots (palm height at commit)
 inputTuning.enableParry = FEATURES.parry; // D12 camera parry swipe
+// D3a: ?mpconf=det,pres,track overrides the MediaPipe confidences — debug/test builds only
+if ((DEBUG || TEST) && params.has('mpconf')) {
+  const [det, pres, track] = params.get('mpconf').split(',').map(Number);
+  const ok = (v) => Number.isFinite(v) && v > 0 && v <= 1;
+  if (ok(det)) inputTuning.minHandDetectionConfidence = det;
+  if (ok(pres)) inputTuning.minHandPresenceConfidence = pres;
+  if (ok(track)) inputTuning.minTrackingConfidence = track;
+}
+inputTuning.calibUseFace = FEATURES.slip; // D3a: chin-height framing check from the face box (face model runs with ?next=1)
 const layers = { game: 'stub', view: 'stub', audio: 'stub' };
 const events = createEventSource({ clock, tuning: inputTuning });
 /** @type {import('./shared/types.js').InputSource & Record<string, any>} */

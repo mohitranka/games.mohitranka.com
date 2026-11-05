@@ -43,14 +43,18 @@ async function fetchBytes(url) {
   return new Uint8Array(await r.arrayBuffer());
 }
 
+const conf = { detection: 0.6, presence: 0.55, tracking: 0.5 };
+const unit = (v, d) => (Number.isFinite(v) && v > 0 && v <= 1 ? v : d);
+
 async function create(d) {
   const opts = {
     baseOptions: { modelAssetBuffer: modelBytes.slice(), delegate: d },
     runningMode: 'VIDEO',
     numHands: 2,
-    minHandDetectionConfidence: 0.6,
-    minHandPresenceConfidence: 0.55,
-    minTrackingConfidence: 0.5,
+    // D3a: from input tuning via init (defaults match the old hard-coded values)
+    minHandDetectionConfidence: conf.detection,
+    minHandPresenceConfidence: conf.presence,
+    minTrackingConfidence: conf.tracking,
   };
   if (d === 'GPU') opts.canvas = new OffscreenCanvas(1, 1);
   return vision.HandLandmarker.createFromOptions(fileset, opts);
@@ -199,6 +203,9 @@ self.onmessage = async (e) => {
     if (m.gpuPaceFrames) pace.frames = m.gpuPaceFrames;
     face.wanted = !!m.face;
     if (m.faceSlowMs) face.slowMs = m.faceSlowMs;
+    conf.detection = unit(m.minHandDetectionConfidence, conf.detection);
+    conf.presence = unit(m.minHandPresenceConfidence, conf.presence);
+    conf.tracking = unit(m.minTrackingConfidence, conf.tracking);
     try {
       await init(m.prefer);
       if (face.wanted) await initFace();

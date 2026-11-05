@@ -7,7 +7,7 @@
 
 import { activeMoves, anyGatedMove, featureOn, featuresOf, menuKey } from './features.js';
 
-const HINTS = {
+export const HINTS = {
   show_both_fists: 'Show both fists to the camera',
   move_closer: 'Move a little closer',
   move_back: 'Move back a step',
@@ -16,7 +16,25 @@ const HINTS = {
   throw_straight: 'Throw a straight, any hand',
   not_seen: "Can't see your hands",
   return_to_spot: 'Step back to your spot',
+  // D3a framing (default build)
+  fists_too_high: 'Raise your camera, or tilt it up',
+  fists_too_low: 'Lower your camera, or tilt it down',
+  tracking_poor: 'More light, step back, or spread your fists a little',
+  make_fists: 'Make two fists',
+  guard_to_chin: 'Raise your guard to your chin', // ?next=1 with the face model
 };
+
+/** D3a framing target: where both palm centres should sit (fractions of the frame). PD's band wins if the frame has it. */
+const FRAMING_TARGET = Object.freeze({ xMin: 0.22, xMax: 0.78, yMin: 0.35, yMax: 0.7 });
+const PALM = [0, 5, 9, 13, 17];
+
+/** Palm centre of one hand's 21 landmarks, or null when the hand isn't seen. */
+export function palmCentre(pts) {
+  if (!pts?.length) return null;
+  const ps = PALM.map((i) => pts[i]).filter(Boolean);
+  if (!ps.length) return null;
+  return [ps.reduce((a, p) => a + p[0], 0) / ps.length, ps.reduce((a, p) => a + p[1], 0) / ps.length];
+}
 const STEP_TITLE = {
   framing: 'Find your spot',
   guard: 'Guard up',
@@ -260,16 +278,53 @@ export function createHud(root, send) {
       ${promptHTML('result', resultCamera, menuKey('confirm', resultFrame, state))}`;
   }
 
+  let framingState = 'none'; // D3a: 'none' | 'out' | 'in' — for tests
+
   function drawSkeleton(cal) {
     const c = ctx2d;
     const W = R.cCanvas.width;
     const H = R.cCanvas.height;
     c.clearRect(0, 0, W, H);
-    c.strokeStyle = 'rgba(255,214,140,0.45)';
-    c.setLineDash([6, 6]);
+    // D3a target box: where both fists (palm centres) should be; green once both are inside
+    const band = cal.framingBand ?? {};
+    const T = {
+      xMin: band.xMin ?? FRAMING_TARGET.xMin, xMax: band.xMax ?? FRAMING_TARGET.xMax,
+      yMin: band.yMin ?? FRAMING_TARGET.yMin, yMax: band.yMax ?? FRAMING_TARGET.yMax,
+    };
+    const palms = [palmCentre(cal.landmarks?.left), palmCentre(cal.landmarks?.right)];
+    const inside = (p) => p && p[0] >= T.xMin && p[0] <= T.xMax && p[1] >= T.yMin && p[1] <= T.yMax;
+    framingState = !cal.landmarks ? 'none' : palms.every(inside) ? 'in' : 'out';
+    const ok = framingState === 'in';
+    const bx = W * T.xMin;
+    const by = H * T.yMin;
+    const bw = W * (T.xMax - T.xMin);
+    const bh = H * (T.yMax - T.yMin);
+    c.fillStyle = ok ? 'rgba(111,195,168,0.16)' : 'rgba(255,214,140,0.08)';
+    c.fillRect(bx, by, bw, bh);
+    c.strokeStyle = ok ? 'rgba(127,224,168,0.95)' : 'rgba(255,214,140,0.7)';
+    c.setLineDash(ok ? [] : [6, 6]);
     c.lineWidth = 2;
-    c.strokeRect(W * 0.18, H * 0.2, W * 0.64, H * 0.62);
+    c.strokeRect(bx, by, bw, bh);
     c.setLineDash([]);
+    // two ghost fists show where each hand goes (mirrored view: the left hand is on the left)
+    for (const fx of [0.38, 0.62]) {
+      c.beginPath();
+      c.arc(W * fx, H * (T.yMin + T.yMax) / 2, 13, 0, Math.PI * 2);
+      c.strokeStyle = ok ? 'rgba(127,224,168,0.6)' : 'rgba(255,214,140,0.45)';
+      c.stroke();
+    }
+    c.fillStyle = ok ? 'rgba(127,224,168,0.95)' : 'rgba(255,214,140,0.8)';
+    c.font = '600 11px system-ui, sans-serif';
+    c.textAlign = 'left';
+    c.fillText(ok ? 'Fists in the box' : 'Fists here', bx + 6, by + 14);
+    // palm-centre markers, so an off-target hand is obvious
+    for (const p of palms) {
+      if (!p) continue;
+      c.beginPath();
+      c.arc(p[0] * W, p[1] * H, 5, 0, Math.PI * 2);
+      c.fillStyle = inside(p) ? '#7fe0a8' : '#ff8b6a';
+      c.fill();
+    }
     const lm = cal.landmarks;
     if (!lm) {
       c.fillStyle = 'rgba(232,226,212,0.5)';
@@ -624,7 +679,7 @@ export function createHud(root, send) {
     debug() {
       return {
         center: R.big.textContent, sub: R.sub.textContent, callout: R.callout.textContent,
-        card: cardKey, calib: !R.calib.hidden,
+        card: cardKey, calib: !R.calib.hidden, framing: framingState, calibHint: R.cHint.textContent,
         prompt: R.prompt.hidden ? null : R.prompt.textContent.replace(/\s+/g, ' ').trim(),
         prompts: [...wrap.querySelectorAll('.prompt')].filter((e) => e.offsetParent !== null || e.closest('.hud-prompt:not([hidden])'))
           .map((e) => ({ text: e.textContent.replace(/\s+/g, ' ').trim(), g: e.dataset.g ?? null, fill: e.querySelector('.ring .fill')?.getAttribute('stroke-dashoffset') ?? null })),

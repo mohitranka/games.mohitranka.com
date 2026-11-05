@@ -11,6 +11,9 @@ export const tuning = {
   gpuSetupMs: 8000,
   gpuSlowInferMs: 100, // a GPU delegate whose median inference (first gpuPaceFrames) exceeds this switches to CPU
   gpuPaceFrames: 5,
+  minHandDetectionConfidence: 0.6, // D3a: MediaPipe HandLandmarker thresholds (passed to the worker at init)
+  minHandPresenceConfidence: 0.55,
+  minTrackingConfidence: 0.5,
   faceSlowMs: 8, // D13: face detector median above this → every 2nd frame
   headGraceMs: 150, // D13: a lost face holds its last head state this long
   stallMs: 2000,
@@ -109,7 +112,14 @@ export const tuning = {
   calibGuardHoldMs: 1500,
   calibStraights: 3,
   calibMeterDelayMs: 4000,
-  calibFramingHoldMs: 300, // framing must hold this long before the guard step
+  calibFramingHoldMs: 1000, // D3a: framing must hold this long (stable) before the guard step
+  calibHoldGraceMs: 300, // D3a: framing / guard holds keep their state through failures this short
+  framingYMin: 0.35, // D3a: palm-centre y band (frame heights) the guard must sit in
+  framingYMax: 0.7,
+  framingTrackMin: 0.8, // D3a: both hands seen in ≥ 80 % of results ...
+  framingTrackWindowMs: 2000, // ... over the last 2 s
+  calibUseFace: false, // D3a (?next=1): chin-height check from the face box; main.js sets it from features.slip
+  guardChinBelowMax: 0.1, // fh: palm centres may sit at most this far below the bottom of the face box
   calibStillSpeed: 0.35, // fw/s: faster palm motion restarts the guard hold ("hold_still")
   calibProvisionalThreshold: 1.0, // 1/s: straights are detected with max(this, noiseFactor × noise) during calibration
   spotDriftMax: 0.15,
