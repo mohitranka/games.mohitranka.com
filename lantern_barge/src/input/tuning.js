@@ -9,6 +9,10 @@ export const tuning = {
   camHeight: 720,
   camFps: 60,
   gpuSetupMs: 8000,
+  gpuSlowInferMs: 100, // a GPU delegate whose median inference (first gpuPaceFrames) exceeds this switches to CPU
+  gpuPaceFrames: 5,
+  faceSlowMs: 8, // D13: face detector median above this → every 2nd frame
+  headGraceMs: 150, // D13: a lost face holds its last head state this long
   stallMs: 2000,
   predictMaxMs: 55,
   lossGraceMs: 160,
@@ -45,15 +49,52 @@ export const tuning = {
   hookLookbackMs: 300, // the hook's start x is the outermost x in this window
   hookSustainFactor: 0.7, // an armed hook stays armed while toward-midline speed > 0.7 × hookThreshold
 
-  // uppercut (deferred, D6): only used when enableUppercut is true
-  uppercutThreshold: 1.5, // fh/s upward
-  uppercutStartBelow: 0.08, // fh below guard y
-  uppercutTravelMin: 0.12, // fh
+  // uppercut (D11, game-design §4): the guard-splitter
+  uppercutThreshold: 1.8, // fh/s upward; also where power starts
+  uppercutRateFull: 3.6, // fh/s upward at power 1
+  uppercutMinMs: 50, // sustained above threshold for ≥ 50 ms ...
+  uppercutMinSamples: 2, // ... across ≥ 2 results
+  uppercutSustainFactor: 0.7, // stays armed while upward speed > 0.7 × threshold
+  uppercutLookbackMs: 300, // the pocket is the lowest point in the 300 ms before onset
+  uppercutPocketMin: 0.1, // fh below guard y
+  uppercutPocketMax: 0.3, // fh below guard y (lower = waist / out of frame: not an uppercut)
+  uppercutTravelMin: 0.15, // fh of upward travel
+  uppercutVxRatio: 0.6, // |vx| < 0.6·|vy| (same units)
+  uppercutTrackedMs: 150, // the hand must have been tracked this long before onset
+  uppercutCommitAboveGuard: 0.02, // commit only at guard y + 0.02 fh or higher, while still above threshold
+  uppercutTwoHandRejectMs: 100, // other hand rising > 0.7 × threshold within ±100 ms of onset → neither commits
+  uppercutTwoHandFactor: 0.7,
+  uppercutReturnLockoutMs: 400, // no uppercut within 400 ms of the same hand's previous punch commit
+  uppercutGuardLockoutMs: 350, // the hand can't count toward guard for 350 ms after an uppercut
+
+  // D12 body shots (main.js sets enableBody from features.body, ?next=1)
+  enableBody: false,
+  bodyBelowGuard: 0.12, // fh: a straight or hook committed with the palm this far below guard y is a body shot
+
+  // D12 parry: a closed fist swiping OUTWARD from inside the guard zone (main.js sets enableParry from features.parry)
+  enableParry: false,
+  parryThreshold: 1.2, // fw/s outward
+  parryMinMs: 50, // sustained ≥ 50 ms ...
+  parryMinSamples: 2, // ... across ≥ 2 results
+  parrySustainFactor: 0.7, // stays armed above 0.7 × threshold
+  parryTravelMin: 0.08, // fw of outward travel
+  parryVyRatio: 0.8, // |vy| < 0.8·|vx| (same units)
+  parryTwoHandRejectMs: 100, // both fists swiping out within ±100 ms = spreading the guard, not a parry
+  parryTwoHandFactor: 0.7,
+  parryRefractoryMs: 400, // per hand, both inputs
 
   // shared punch rules
   refractoryMs: 200,
   guardLockoutMs: 250,
-  enableUppercut: false,
+  enableUppercut: false, // D11: main.js sets it from features.uppercut (?next=1); unit tests set it directly
+
+  // P1a / P1b guard parity (on with ?next=1: main.js sets guardParity from features.uppercut)
+  guardParity: false,
+  guardReturnMs: 450, // a punching hand can't count toward guard until onset + 450 ms (both inputs) ...
+  uppercutGuardReturnMs: 550, // ... or onset + 550 ms after an uppercut. Replaces the 250 / 350 ms lockout.
+  cameraGuardLatencyMs: 110, // documentation: capture → raw guard sample on camera (P1b; re-measured in MC-26)
+  keyboardLatencyMs: 20, // documentation: keydown → sample on keyboard
+  keyboardGuardDelayMs: 90, // = cameraGuardLatencyMs − keyboardLatencyMs: every keyboard guard change lands this late
 
   // guard (D3, GDD §4)
   guardRadius: 0.12, // fh
@@ -88,7 +129,7 @@ export const tuning = {
   extFullRatio: 1.4, // kRatio at which ext = 1
 
   // keyboard (GDD §5, §10)
-  keyboardPower: 0.6,
+  keyboardPower: 0.65, // D11 P1 (was 0.6): balances the keyboard's fixed power against camera power
   keyboardPunchAnimMs: 250, // synthesized glove motion for keyboard hands
 };
 

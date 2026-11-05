@@ -5,6 +5,8 @@
 //   centre: 3-2-1, FIGHT!, COUNTER!, GUARD BROKEN, knockdown label + count; small callouts below it
 //   cards: practice, rest (with the step-back hint), result, calibration (skeleton, hint, meter), pause, reconnect
 
+import { activeMoves, anyGatedMove, featureOn, featuresOf, menuKey } from './features.js';
+
 const HINTS = {
   show_both_fists: 'Show both fists to the camera',
   move_closer: 'Move a little closer',
@@ -37,13 +39,29 @@ const PROMPTS = {
   result: { g: 'confirm', icon: '✊✊', cam: 'Hold guard for a rematch', key: 'Enter', keyText: 'for a rematch' },
   resume: { g: 'resume', icon: '✊✊', cam: 'Raise your guard to resume', key: null, keyText: '' },
 };
+
+/** D12 get-up prompt: a hold ring in BOTH input forms (the hold is the action, not a menu shortcut). */
+function risePromptHTML(camera) {
+  const icon = camera ? '✊✊' : '<kbd>Space</kbd>';
+  const text = camera ? 'Hold guard to rise' : 'Hold Space to rise';
+  return `<div class="prompt cam rise ${camera ? '' : 'kbd'}" data-g="rise">
+      <span class="ring-wrap"><svg class="ring" viewBox="0 0 36 36" aria-hidden="true">
+        <circle class="track" cx="18" cy="18" r="15"></circle>
+        <circle class="fill" cx="18" cy="18" r="15" stroke-dasharray="${RING_C.toFixed(2)}" stroke-dashoffset="${RING_C.toFixed(2)}"></circle>
+      </svg><span class="icon">${icon}</span></span>
+      <span class="gtext">${text}</span>
+    </div>`;
+}
 const RING_C = 2 * Math.PI * 15;
 
 const isCamera = (frame) => frame?.source === 'camera' || frame?.source === 'replay';
 
 /** The prompt block for one context. Camera: ring + gesture + key hint underneath. Keyboard: key hint only. */
-function promptHTML(id, camera) {
-  const P = PROMPTS[id];
+const PROMPT_ACTION = { calibration: 'cancel', practice: 'confirm', pause: 'resume', fight: 'pause', result: 'confirm' };
+
+function promptHTML(id, camera, keyLabel) {
+  const P = { ...PROMPTS[id] };
+  if (P.key && keyLabel) P.key = keyLabel;
   if (!camera) return P.key ? `<div class="prompt key-only">Press <kbd>${P.key}</kbd> ${P.keyText}</div>` : '';
   return `<div class="prompt cam" data-g="${P.g}">
       <span class="ring-wrap"><svg class="ring" viewBox="0 0 36 36" aria-hidden="true">
@@ -92,6 +110,7 @@ export function createHud(root, send) {
       <div class="fighter opp">
         <div class="name"><span class="kd"><i></i><i></i></span><span class="full">Tamsin “Tugboat” Rourke</span><span class="short">Tamsin</span></div>
         <div class="bar hp"><div class="trail"></div><div class="fill"></div></div>
+        <div class="bar ostam" hidden><div class="fill"></div></div>
       </div>
     </div>
     <div class="hud-center"><div class="sub"></div><div class="big"></div></div>
@@ -121,6 +140,7 @@ export function createHud(root, send) {
     pKd: wrap.querySelectorAll('.player .kd i'),
     oHp: $('.opp .hp .fill'), oTrail: $('.opp .hp .trail'),
     oKd: wrap.querySelectorAll('.opp .kd i'),
+    oSta: $('.opp .ostam .fill'), oStaBar: $('.opp .ostam'),
     round: $('.clock .round'), time: $('.clock .time'), clock: $('.clock'),
     center: $('.hud-center'), big: $('.hud-center .big'), sub: $('.hud-center .sub'),
     callout: $('.hud-callout'),
@@ -154,7 +174,7 @@ export function createHud(root, send) {
   let cost = null; // {t, from, to}
   const practiceLit = new Set();
   let cardKey = '';
-  let cardCamera = false;
+  let cardCamera = ''; // input form + active moves the current card was built for
   let matchPoints = null; // {player, opponent} percentages from match_end (D9)
   let lastCount = { key: '' };
 
@@ -171,8 +191,11 @@ export function createHud(root, send) {
   }
 
   function practiceCard(state, frame) {
-    const kb = frame?.source === 'keyboard';
-    return `
+    const camera = isCamera(frame);
+    if (!anyGatedMove(state, frame)) {
+      // no ?next=1: exactly the card as it shipped before M5
+      const kb = frame?.source === 'keyboard';
+      return `
       <h2>Practice</h2>
       <p class="lede">Tamsin holds the mitts. Nothing hurts yet.</p>
       <div class="chips">
@@ -181,7 +204,21 @@ export function createHud(root, send) {
       <p class="safety">Punch the air, not the screen.</p>
       ${kb ? '<p class="keys"><kbd>F</kbd>/<kbd>J</kbd> straights · <kbd>D</kbd>/<kbd>K</kbd> hooks · hold <kbd>Space</kbd> to guard</p>' : ''}
       <div class="row"><span class="timer"></span><button type="button" data-cmd="skip_practice">Start the fight (Enter)</button></div>
-      ${promptHTML('practice', isCamera(frame))}`;
+      ${promptHTML('practice', camera, menuKey('confirm', frame, state))}`;
+    }
+    // ?next=1 (P1): every action in the active input's form. Camera shows the gesture; keyboard shows the keys.
+    const f = featuresOf(frame, state);
+    const moves = activeMoves(state, frame).map((m) => {
+      const how = camera ? m.cam : `${m.keys(f).map((k) => `<kbd>${k}</kbd>`).join(m.sep ?? ' / ')}${m.keyText ? ` <span>${m.keyText}</span>` : ''}`;
+      return `<div class="move ${m.lamp ? '' : 'nolamp'}"${m.lamp ? ` data-chip="${m.id}"` : ''}><span class="lamp">${m.label}</span><span class="how">${how}</span></div>`;
+    }).join('');
+    return `
+      <h2>Practice</h2>
+      <p class="lede">Tamsin holds the mitts. Nothing hurts yet.</p>
+      <div class="moves ${camera ? 'camera' : 'keyboard'}">${moves}</div>
+      <p class="safety">Punch the air, not the screen.</p>
+      <div class="row"><span class="timer"></span><button type="button" data-cmd="skip_practice">Start the fight (Enter)</button></div>
+      ${promptHTML('practice', isCamera(frame), menuKey('confirm', frame, state))}`;
   }
 
   function restCard(state) {
@@ -200,6 +237,7 @@ export function createHud(root, send) {
   }
 
   let resultCamera = false;
+  let resultFrame = null;
   function resultCard(state) {
     const { winner, method } = state.result;
     const won = winner === 'player';
@@ -216,10 +254,10 @@ export function createHud(root, send) {
         <div><b>${s.landed}/${s.thrown}</b><span>Landed</span></div>
         <div><b>${s.counters}</b><span>Counters</span></div>
         <div><b>${s.interrupts}</b><span>Interrupts</span></div>
-        <div><b>${s.blocked}</b><span>Blocked by her</span></div>
+        ${Number.isFinite(s.splits) && featureOn('uppercut', state, resultFrame) ? `<div><b>${s.splits}</b><span>Guard splits</span></div>` : `<div><b>${s.blocked}</b><span>Blocked by her</span></div>`}
       </div>
       <div class="row"><button type="button" data-cmd="restart">Rematch (Enter)</button></div>
-      ${promptHTML('result', resultCamera)}`;
+      ${promptHTML('result', resultCamera, menuKey('confirm', resultFrame, state))}`;
   }
 
   function drawSkeleton(cal) {
@@ -285,9 +323,34 @@ export function createHud(root, send) {
       const out = [];
       switch (e.type) {
         case 'hit':
-          if (e.interrupt) { flash = { t, text: 'COUNTER!', sub: 'Anchor Drop stopped', cls: 'counter', dur: 1.0 }; out.push('flash'); }
+          if (e.riposte) { flash = { t, text: 'RIPOSTE!', sub: '', cls: 'counter', dur: 0.8 }; out.push('flash'); }
+          else if (e.interrupt) { flash = { t, text: 'COUNTER!', sub: 'Anchor Drop stopped', cls: 'counter', dur: 1.0 }; out.push('flash'); }
           else if (e.counter) { flash = { t, text: 'COUNTER!', sub: '', cls: 'counter', dur: 0.8 }; out.push('flash'); }
           out.push('bar');
+          break;
+        case 'parry': // D12
+          if (e.result === 'success') {
+            flash = { t, text: 'PARRY!', sub: 'Riposte now', cls: 'parry', dur: 0.6 };
+            out.push('flash');
+          } else {
+            callout = { t, text: 'Parry missed', cls: 'muted' };
+            out.push('callout');
+          }
+          if (state.phase === 'practice') { practiceLit.add('parry'); out.push('chip'); }
+          break;
+        case 'opponent_tired':
+          if (e.level === 'tired' || e.level === 'exhausted') {
+            callout = { t, text: e.level === 'exhausted' ? 'She’s exhausted!' : 'She’s tiring', cls: e.level === 'exhausted' ? 'open' : '' };
+            out.push('callout');
+          }
+          out.push('bar');
+          break;
+        case 'player_hurt':
+          out.push('vignette');
+          break;
+        case 'guard_split': // D11
+          flash = { t, text: 'SPLIT!', sub: 'Her guard is open', cls: 'split', dur: 0.6 };
+          out.push('flash');
           break;
         case 'guard_broken':
           flash = { t, text: 'GUARD BROKEN', sub: '', cls: 'broken', dur: 0.9 };
@@ -316,7 +379,7 @@ export function createHud(root, send) {
             callout = { t, text: `Blocked  −${e.staminaCost} stamina`, cls: 'block' };
             cost = { t, from: state.player.stamina, to: state.player.stamina + e.staminaCost };
           } else {
-            callout = { t, text: 'She blocked it', cls: 'muted' };
+            callout = { t, text: e.punchType === 'uppercut' ? 'Elbows tucked: uppercut blocked' : 'She blocked it', cls: 'muted' };
           }
           out.push('callout');
           break;
@@ -343,7 +406,10 @@ export function createHud(root, send) {
           if (e.comboIndex === 0 || e.comboIndex === undefined) out.push('pose');
           break;
         case 'punch_thrown':
-          if (state.phase === 'practice') { practiceLit.add(e.punchType); out.push('chip'); }
+          if (state.phase === 'practice') {
+            practiceLit.add(e.target === 'body' ? 'body' : e.punchType);
+            out.push('chip');
+          }
           break;
         case 'phase':
           if (e.to === 'practice') practiceLit.clear();
@@ -394,6 +460,7 @@ export function createHud(root, send) {
       // auto-paused by a camera loss: paused with a camera source while 'confirm' (manual resume) isn't offered
       const cameraLost = state.paused && camera && !avail.includes('confirm');
       resultCamera = camera;
+      resultFrame = frame;
       const o = state.opponent;
       const phase = state.phase;
 
@@ -404,6 +471,13 @@ export function createHud(root, send) {
       set('oHp', R.oHp, 'width', pct(o.hp, o.maxHp));
       set('oTrail', R.oTrail, 'width', pct(o.hp, o.maxHp));
       set('pSta', R.pSta, 'width', pct(p.stamina, p.maxStamina));
+      // D12: her stamina, a thin bar under her HP (only once the sim reports it)
+      const herSta = featureOn('body', state, frame) && Number.isFinite(o.stamina) && Number.isFinite(o.maxStamina);
+      set('oStaHidden', R.oStaBar, 'hidden', !herSta);
+      if (herSta) {
+        set('oSta', R.oSta, 'width', pct(o.stamina, o.maxStamina));
+        set('oStaCls', R.oStaBar, 'class', `bar ostam ${o.tired ?? 'fresh'}`);
+      }
       const gassed = now < p.gassedUntil;
       set('pHpCls', R.pHpBar, 'class', `bar hp${p.lowHp ? ' low' : ''}`);
       // D9a: while pressured, guarding regen is slowed; the bar shows it with a cold striped tint
@@ -476,9 +550,10 @@ export function createHud(root, send) {
       if (phase === 'practice') key = `practice-${frame?.source}`;
       else if (phase === 'round_end') key = `rest-${r.n}-${Math.round(p.hp)}-${Math.round(o.hp)}`;
       else if (phase === 'match_end') key = `result-${state.result.winner}-${state.result.method}`;
-      // the card key stays stable for tests; a change of input (camera ↔ keyboard prompt copy) rebuilds it separately
-      const rebuild = key !== cardKey || (key && camera !== cardCamera);
-      cardCamera = camera;
+      // the card key stays stable for tests; a change of input form or of the enabled moves rebuilds it separately
+      const sig = `${camera}|${activeMoves(state, frame).map((m) => m.id).join(',')}`;
+      const rebuild = key !== cardKey || (key && sig !== cardCamera);
+      cardCamera = sig;
       if (rebuild) {
         cardKey = key;
         R.card.hidden = !key;
@@ -503,28 +578,36 @@ export function createHud(root, send) {
       const calOn = phase === 'calibration';
       set('calibHidden', R.calib, 'hidden', !calOn);
       if (calOn && frame?.calibration) updateCalib(frame.calibration);
-      if (calOn) set('calibPrompt', R.calibPrompt, 'html', promptHTML('calibration', camera));
+      if (calOn) set('calibPrompt', R.calibPrompt, 'html', promptHTML('calibration', camera, menuKey('cancel', frame, state)));
 
       // D10 floating prompt: pause / camera-loss resume / (camera only) the subtle fight hint
       let promptId = null;
-      if (phase !== 'boot' && phase !== 'match_end' && state.paused) {
+      const rising = phase === 'fight' && featureOn('rise', state, frame) && p.down && Number.isFinite(p.down.holdNeeded) && p.down.holdNeeded > 0;
+      if (rising) {
+        promptId = 'rise';
+      } else if (phase !== 'boot' && phase !== 'match_end' && state.paused) {
         if (cameraLost) promptId = avail.includes('resume') || gesture?.kind === 'resume' ? 'resume' : null;
         else promptId = 'pause';
       } else if (phase === 'fight' && camera && avail.includes('pause') && r.clockRunning && !down) {
         promptId = 'fight';
       }
-      const promptKey = promptId ? `${promptId}-${camera}` : '';
+      const promptKeyLabel = promptId && PROMPT_ACTION[promptId] ? menuKey(PROMPT_ACTION[promptId], frame, state) : null;
+      const promptKey = promptId ? `${promptId}-${camera}-${promptKeyLabel}` : '';
       if (cache.get('promptKey') !== promptKey) {
         cache.set('promptKey', promptKey);
         R.prompt.hidden = !promptId;
         R.prompt.className = `hud-prompt ${promptId ?? ''}`;
-        R.prompt.innerHTML = promptId ? promptHTML(promptId, camera) : '';
+        R.prompt.innerHTML = promptId === 'rise' ? risePromptHTML(camera) : promptId ? promptHTML(promptId, camera, promptKeyLabel) : '';
       }
+      if (rising) set('riseLate', R.prompt, 'class', `hud-prompt rise${p.down.count >= 8 ? ' late' : ''}`);
+      else cache.delete('riseLate');
+      const riseProg = rising ? Math.max(0, Math.min(1, (p.down.holdProgress ?? 0) / p.down.holdNeeded)) : 0;
 
       // D10 hold rings: fill every visible prompt whose gesture is being held
       for (const el of wrap.querySelectorAll('.prompt.cam[data-g]')) {
-        const on = gesture?.kind === el.dataset.g;
-        const prog = on ? Math.max(0, Math.min(1, gesture.progress ?? 0)) : 0;
+        const isRise = el.dataset.g === 'rise';
+        const on = isRise ? riseProg > 0 : gesture?.kind === el.dataset.g;
+        const prog = isRise ? riseProg : on ? Math.max(0, Math.min(1, gesture.progress ?? 0)) : 0;
         const fill = el.querySelector('.ring .fill');
         const off = (RING_C * (1 - prog)).toFixed(2);
         if (fill && fill.getAttribute('stroke-dashoffset') !== off) fill.setAttribute('stroke-dashoffset', off);

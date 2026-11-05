@@ -285,6 +285,23 @@ body.phase-boot .hud-top, body.phase-calibration .hud-top, body.phase-boot .hud-
 .hud-center.counter .big { color: #ffd36b; text-shadow: 0 6px 0 #6a3d10, 0 0 40px rgba(255, 200, 80, 0.8); }
 .hud-center.broken .big { color: #ff6a55; text-shadow: 0 6px 0 #5a1410, 0 0 40px rgba(255, 70, 50, 0.7); font-size: clamp(2.4rem, 8vw, 5.5rem); }
 .hud-center.fight .big { color: #ffe2b0; }
+.hud-center.split .big { color: #9fe3ff; text-shadow: 0 6px 0 #123b55, 0 0 36px rgba(120, 210, 255, 0.75); font-size: clamp(2.8rem, 9vw, 6rem); }
+.chips { flex-wrap: wrap; }
+/* practice card moves (P1): a lamp per action + its form for the active input */
+.moves { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; margin: 4px 0 0; text-align: left; }
+.move { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.move .lamp {
+  flex: none; min-width: 6.2em; padding: 0.35em 0.6em; border-radius: 999px; text-align: center;
+  font: 700 0.72rem/1 var(--display); letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink-dim); box-shadow: inset 0 0 0 1.5px rgba(243, 234, 216, 0.3); transition: background 0.2s, color 0.2s;
+}
+.move.lit .lamp { background: var(--brass); color: var(--night); box-shadow: 0 0 14px rgba(215, 169, 71, 0.7); }
+.move.nolamp .lamp { box-shadow: none; color: var(--ink-dim); }
+.move .how { min-width: 0; font-size: 0.82rem; color: var(--ink); line-height: 1.25; }
+.move .how span { color: var(--ink-dim); }
+.moves.camera .how { color: #ffd9a8; }
+@media (max-width: 480px) { .moves { grid-template-columns: 1fr; } }
+.hud-card .keys.gestures { color: #ffd9a8; }
 .hud-center.kd .big { color: #ff6a55; font-size: clamp(2.4rem, 8vw, 5.5rem); }
 .hud-center.count .big { font-size: clamp(4rem, 16vw, 10rem); }
 .hud-center.count.player .big { color: #ff8b6a; }
@@ -412,6 +429,35 @@ body.phase-round_end .hud-callout, body.phase-match_end .hud-callout, body.phase
 .hud-prompt.fight .ring-wrap .icon { font-size: 10px; }
 .hud-prompt.fight .keyhint { display: none; }
 .hud-calib .calib-prompt .prompt.cam { margin-top: 4px; }
+/* D12 get-up: a bigger ring; it turns red from count 8 (the deadline is 9) */
+.hud-prompt.rise { top: 60%; }
+.hud-prompt.rise .ring-wrap { width: 58px; height: 58px; }
+.hud-prompt.rise .ring .fill { stroke: #7fe0a8; }
+.hud-prompt.rise.late .ring .fill { stroke: #ff5a45; }
+.hud-prompt.rise.late { box-shadow: inset 0 0 0 1.5px rgba(255, 90, 69, 0.7), 0 0 30px rgba(255, 60, 40, 0.35); }
+.prompt.rise.kbd .icon kbd { font-size: 9px; padding: 0.1em 0.25em; }
+.prompt.rise .gtext { font-size: 1.2rem; }
+
+/* D12 her stamina: a thin bar under her HP; tired = amber, exhausted = pulsing grey */
+.bar.ostam { height: 6px; width: min(30vw, 280px); }
+.bar.ostam[hidden] { display: none; }
+.bar.ostam .fill { left: auto; right: 0; background: linear-gradient(180deg, #a2ecd4, var(--sta)); transition: width 0.15s linear; }
+.bar.ostam.tired .fill { background: linear-gradient(180deg, #ffd27d, #e09a3a); }
+.bar.ostam.exhausted .fill { background: #9a93a8; animation: pulse 1s ease-in-out infinite; }
+
+/* D12 hurt: radial blur — the edges are blurred and darkened, the centre stays sharp */
+.fx-hurt {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.15s ease;
+  backdrop-filter: blur(3px);
+  -webkit-mask-image: radial-gradient(ellipse at center, transparent 35%, #000 80%);
+  mask-image: radial-gradient(ellipse at center, transparent 35%, #000 80%);
+  background: radial-gradient(ellipse at center, transparent 35%, rgba(30, 0, 12, 0.55) 100%);
+}
+.fx-hurt.on { opacity: 1; animation: hurtpulse 0.8s ease-in-out infinite; }
+@keyframes hurtpulse { 50% { opacity: 0.8; } }
+/* the whole view goes slightly soft and washed out while hurt; the masked overlay adds the stronger edge blur */
+#gl.hurt { filter: blur(0.7px) saturate(0.75) brightness(0.95); }
+.hud-center.parry .big { color: #e8f4ff; text-shadow: 0 6px 0 #233a55, 0 0 34px rgba(170, 220, 255, 0.8); font-size: clamp(2.8rem, 9vw, 6rem); }
 
 /* ───────────── calibration */
 .hud-calib {

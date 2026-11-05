@@ -4,8 +4,9 @@ import { EVENT } from '../shared/constants.js';
 
 export const EPS = 1e-9;
 
-export function punchCost(T, power) {
-  return T.punchCostBase + T.punchCostPower * Math.min(1, Math.max(0, power));
+export function punchCost(T, power, punchType = 'straight') {
+  const base = punchType === 'uppercut' ? T.uppercutCostBase : T.punchCostBase; // D11: uppercut 7 + 7p
+  return base + T.punchCostPower * Math.min(1, Math.max(0, power));
 }
 
 export function isGassed(player, t) {

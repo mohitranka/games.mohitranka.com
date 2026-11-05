@@ -15,7 +15,7 @@ import { DEFAULT_PROFILE } from './tuning.js';
  *   recording?:{header:object, results:object[], cues:object[]}, calibrate?:boolean,
  *   video?:HTMLVideoElement, prefer?:'GPU'|'CPU'}} opts
  */
-export function createHandSource({ backend, clock, tuning, recording = null, calibrate = false, video = null, prefer = 'GPU' }) {
+export function createHandSource({ backend, clock, tuning, recording = null, calibrate = false, video = null, prefer = 'GPU', face = false }) {
   const pipeline = createInputPipeline({ tuning, profile: DEFAULT_PROFILE });
   const calib = createCalibration({ tuning });
   const gestures = createGestureDetector({ tuning });
@@ -47,7 +47,15 @@ export function createHandSource({ backend, clock, tuning, recording = null, cal
 
   const activeProfile = () => calib.provisionalProfile ?? calibratedProfile ?? DEFAULT_PROFILE;
 
+  // D13 spike: the last face box (held for headGraceMs, as for a lost hand)
+  let lastFace = null;
+  let lastFaceT = -Infinity;
+
   function ingest(result, raw = null) {
+    if (result.face) {
+      lastFace = result.face;
+      lastFaceT = result.t;
+    }
     pipeline.setProfile(activeProfile());
     const { punches } = pipeline.ingest(result);
     if (calib.active) {
@@ -83,11 +91,13 @@ export function createHandSource({ backend, clock, tuning, recording = null, cal
     if (backend === 'camera') {
       const s = detector?.stats;
       return {
-        ok: !!(frames?.ok && detector?.ready),
+        // a GPU→CPU worker restart (a second or two) is not a camera loss: don't auto-pause the fight for it
+        ok: !!(frames?.ok && (detector?.ready || detector?.stats.switching)),
         fps: s?.fps ?? 0,
         inferMs: s?.inferMs ?? 0,
         pipelineMs: s?.pipelineMs ?? 0,
         delegate: s?.delegate ?? null,
+        ...(s?.face ? { face: { ...s.face } } : {}), // D13 spike: {ok, error, ms, every, runs, found}
       };
     }
     return { ok: true, fps: recording?.header?.fps ?? 0, inferMs: 0, pipelineMs: 0, delegate: null };
@@ -103,6 +113,9 @@ export function createHandSource({ backend, clock, tuning, recording = null, cal
     f.tracking = tracking();
     f.calibration = { ...calib.status(), wanted };
     f.gesture = gestures.read(t, drain);
+    if (lastFace && t - lastFaceT <= tuning.headGraceMs / 1000 + 1e-9) {
+      f.head = { present: true, raw: { ...lastFace, x: 1 - lastFace.x } }; // mirrored like the hands; spike: dx/dy/w0/dodge come with M7
+    }
     f.spot = {
       kGuardDrift: spotDrift,
       hint: spotDrift !== null && spotDrift > tuning.spotDriftMax ? 'return_to_spot' : null,
@@ -138,10 +151,15 @@ export function createHandSource({ backend, clock, tuning, recording = null, cal
       detector = createDetector({
         prefer,
         gpuSetupMs: tuning.gpuSetupMs,
+        gpuSlowInferMs: tuning.gpuSlowInferMs,
+        gpuPaceFrames: tuning.gpuPaceFrames,
+        face, // D13 spike: run the face detector too (?next=1)
+        faceSlowMs: tuning.faceSlowMs,
         onResult: (m) => {
           const hands = m.hands ?? [];
-          for (const fn of rawListeners) fn({ ts: m.ts, arrival: m.arrival, w: m.w, h: m.h, hands });
-          ingest({ t: clock.fromPerfMs(m.ts), w: m.w, h: m.h, hands }, m);
+          const faceRec = m.faceRan ? (m.face ?? null) : undefined; // undefined = not run this frame
+          for (const fn of rawListeners) fn({ ts: m.ts, arrival: m.arrival, w: m.w, h: m.h, hands, face: faceRec });
+          ingest({ t: clock.fromPerfMs(m.ts), w: m.w, h: m.h, hands, face: faceRec }, m);
         },
       });
       const cancelled = () => {

@@ -14,6 +14,9 @@ function createHandRec() {
     uArmed: false, uOnset: 0, uY0: 0, uSamples: 0, uPeak: 0,
     lastRate: 0, lastCommit: -Infinity, lockoutUntil: -Infinity,
     wasSeen: false, wasFist: false,
+    riseTimes: [], // D11 two-hand reject: result times when this fist was rising faster than 0.7 × threshold
+    pArmed: false, pOnset: 0, pX0: 0, pSamples: 0, lastParry: -Infinity, // D12 parry
+    outTimes: [], // D12 two-hand reject: result times when this fist was swiping outward faster than 0.7 × threshold
   };
 }
 
@@ -44,13 +47,21 @@ export function createRecognizer({ tuning }) {
   function punch(hand, punchType, power, tOnset, tCommit, aimX, inferred, peak) {
     return {
       type: 'punch', id: nextId++, hand, punchType, power: Math.round(clamp01(power) * 1000) / 1000,
+      target: 'head', // D12: set to 'body' at commit from the palm height (enableBody)
       aim: { x: aimX }, tOnset, tCommit, inferred, peak,
     };
   }
 
   function commit(r, ev, t) {
     r.lastCommit = t;
-    r.lockoutUntil = t + tuning.guardLockoutMs / 1000;
+    if (tuning.guardParity) {
+      // P1a/P1b: the hand counts toward guard again only at onset + guardReturnMs (550 ms after an uppercut)
+      const back = ev.punchType === 'uppercut' ? tuning.uppercutGuardReturnMs : tuning.guardReturnMs;
+      r.lockoutUntil = ev.tOnset + back / 1000;
+    } else {
+      const lockMs = ev.punchType === 'uppercut' ? tuning.uppercutGuardLockoutMs : tuning.guardLockoutMs; // D11
+      r.lockoutUntil = t + lockMs / 1000;
+    }
     disarm(r);
     return ev;
   }
@@ -59,12 +70,22 @@ export function createRecognizer({ tuning }) {
    * @param {ReturnType<import('./hand-tracker.js').createHandTracker>} tracker
    * @param {{t:number, seen:{left:boolean,right:boolean}}} upd
    * @param {import('../shared/types.js').CalibrationProfile} profile
-   * @returns {object[]} punch events (with an extra `peak` field used by calibration)
+   * @returns {object[]} punch events (with an extra `peak` field used by calibration) and D12 parry events
    */
   function update(tracker, upd, profile) {
     const { t, seen } = upd;
     const out = [];
     const aspectInv = 1 / tracker.aspect; // H/W: frame heights → frame widths
+    // D11 two-hand reject needs both hands' rising samples for this result before either hand is classified
+    for (const hand of HANDS) {
+      const s = tracker.slots[hand];
+      const r = rec[hand];
+      if (seen[hand] && s.fist && -s.vy > tuning.uppercutThreshold * tuning.uppercutTwoHandFactor) r.riseTimes.push(t);
+      while (r.riseTimes.length && r.riseTimes[0] < t - 1) r.riseTimes.shift();
+      const outward = (hand === 'left' ? -1 : 1) * s.vx; // away from the midline
+      if (seen[hand] && s.fist && outward > tuning.parryThreshold * tuning.parryTwoHandFactor) r.outTimes.push(t);
+      while (r.outTimes.length && r.outTimes[0] < t - 1) r.outTimes.shift();
+    }
     for (const hand of HANDS) {
       const s = tracker.slots[hand];
       const r = rec[hand];
@@ -155,32 +176,80 @@ export function createRecognizer({ tuning }) {
         }
       } else r.hArmed = false;
 
-      // ── uppercut: deferred (D6). Only runs when enableUppercut is true.
+      // ── uppercut (D11): up through the gap, from the pocket below guard, still fast at guard height
       let upper = null;
       if (tuning.enableUppercut && !refractory) {
         const vup = -s.vy; // frame heights/s, + = up
         const gy = profile.hands[hand].center.y;
+        const thr = tuning.uppercutThreshold;
         if (!r.uArmed) {
-          if (vup > tuning.uppercutThreshold) {
-            let y0 = prev.y; // lowest point in the lookback window = where the uppercut began
-            for (const h of s.hist) if (h.t >= t - tuning.hookLookbackMs / 1000 - EPS && h.y > y0) y0 = h.y;
-            if (y0 >= gy + tuning.uppercutStartBelow) {
-              Object.assign(r, { uArmed: true, uOnset: prev.t, uY0: y0, uSamples: 1, uPeak: vup });
+          const onset = prev.t;
+          const tracked = onset - s.firstSeen >= tuning.uppercutTrackedMs / 1000 - EPS;
+          const returnOk = onset - r.lastCommit >= tuning.uppercutReturnLockoutMs / 1000 - EPS; // not the pull-back
+          if (vup > thr && tracked && returnOk) {
+            let y0 = prev.y; // the pocket: lowest point (largest y) in the lookback window before onset
+            for (const h of s.hist) {
+              if (h.t >= onset - tuning.uppercutLookbackMs / 1000 - EPS && h.t <= onset + EPS && h.y > y0) y0 = h.y;
+            }
+            const below = y0 - gy;
+            if (below >= tuning.uppercutPocketMin - EPS && below <= tuning.uppercutPocketMax + EPS) {
+              Object.assign(r, { uArmed: true, uOnset: onset, uY0: y0, uSamples: 1, uPeak: vup });
             }
           }
-        } else if (vup > tuning.uppercutThreshold * 0.7) {
-          r.uSamples += 1;
+        } else if (vup > thr * tuning.uppercutSustainFactor) {
+          if (vup > thr) r.uSamples += 1;
           r.uPeak = Math.max(r.uPeak, vup);
         } else r.uArmed = false;
-        if (r.uArmed && r.uSamples >= 2 && r.uY0 - s.raw.y > tuning.uppercutTravelMin &&
-            Math.abs(s.vx) < 0.6 * Math.abs(s.vy * aspectInv)) {
-          upper = punch(hand, 'uppercut', (r.uPeak - tuning.uppercutThreshold) / tuning.uppercutThreshold,
-            r.uOnset, t, x, false, r.uPeak);
+        if (r.uArmed && vup > thr && t - r.uOnset >= tuning.uppercutMinMs / 1000 - EPS &&
+            r.uSamples >= tuning.uppercutMinSamples && r.uY0 - s.raw.y > tuning.uppercutTravelMin &&
+            s.raw.y <= gy + tuning.uppercutCommitAboveGuard && // still rising fast at guard height (a guard raise slows)
+            Math.abs(s.vx * tracker.aspect) < tuning.uppercutVxRatio * Math.abs(s.vy)) {
+          const other = rec[hand === 'left' ? 'right' : 'left'];
+          const lo = r.uOnset - tuning.uppercutTwoHandRejectMs / 1000 - EPS;
+          const hi = r.uOnset + tuning.uppercutTwoHandRejectMs / 1000 + EPS;
+          if (other.riseTimes.some((rt) => rt >= lo && rt <= hi)) {
+            r.uArmed = false; // both fists rising together: a guard raise, not a punch (neither commits)
+            other.uArmed = false;
+          } else {
+            upper = punch(hand, 'uppercut', (r.uPeak - thr) / (tuning.uppercutRateFull - thr), r.uOnset, t, x, false, r.uPeak);
+          }
         }
       } else r.uArmed = false;
 
-      // priority: straight, then hook, then uppercut (GDD §4)
-      const winner = straight ?? hook ?? upper;
+      // ── parry (D12): a closed fist swiping OUTWARD from inside the guard zone. Hooks go inward, so they never collide.
+      if (tuning.enableParry && t - r.lastParry >= tuning.parryRefractoryMs / 1000 - EPS) {
+        const dirOut = hand === 'left' ? -1 : 1;
+        const vout = s.vx * dirOut;
+        const c = profile.hands[hand].center;
+        if (!r.pArmed) {
+          const inZone = Math.hypot((prev.x - c.x) * tracker.aspect, prev.y - c.y) <= tuning.guardRadius;
+          if (vout > tuning.parryThreshold && inZone) Object.assign(r, { pArmed: true, pOnset: prev.t, pX0: prev.x, pSamples: 1 });
+        } else if (vout > tuning.parryThreshold * tuning.parrySustainFactor) {
+          if (vout > tuning.parryThreshold) r.pSamples += 1;
+        } else r.pArmed = false;
+        if (r.pArmed && t - r.pOnset >= tuning.parryMinMs / 1000 - EPS && r.pSamples >= tuning.parryMinSamples &&
+            (x - r.pX0) * dirOut > tuning.parryTravelMin && Math.abs(s.vy * aspectInv) < tuning.parryVyRatio * Math.abs(s.vx)) {
+          const other = rec[hand === 'left' ? 'right' : 'left'];
+          const lo = r.pOnset - tuning.parryTwoHandRejectMs / 1000 - EPS;
+          const hi = r.pOnset + tuning.parryTwoHandRejectMs / 1000 + EPS;
+          if (other.outTimes.some((ot) => ot >= lo && ot <= hi)) {
+            r.pArmed = false; // both fists swiping out together: spreading the guard (neither parries)
+            other.pArmed = false;
+          } else {
+            out.push({ type: 'parry', id: nextId++, hand, tOnset: r.pOnset, tCommit: t });
+            r.pArmed = false;
+            r.lastParry = t;
+          }
+        }
+      } else r.pArmed = false;
+
+      // priority (D11): uppercut, then straight, then hook
+      const winner = upper ?? straight ?? hook;
+      if (upper) r.sArmed = r.hArmed = false;
+      if (winner && winner.punchType !== 'uppercut' && tuning.enableBody &&
+          s.raw.y - profile.hands[hand].center.y >= tuning.bodyBelowGuard - EPS) {
+        winner.target = 'body'; // D12: straight or hook committed with the palm ≥ 0.12 fh below guard y
+      }
       if (winner) out.push(commit(r, winner, t));
 
       r.lastRate = rate;

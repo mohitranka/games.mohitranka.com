@@ -33,6 +33,10 @@ export const EVENT_VOICES = Object.freeze({
   feint_cancel: 'glove-tap+hah', // D9
   cover: 'leather-creak', // D9
   pressure: 'shell-bark+jeer', // D9a (on:true only)
+  guard_split: 'leather-clap+grunt', // D11
+  parry: 'clack | soft-whoosh', // D12
+  opponent_tired: 'her-breath', // D12
+  player_hurt: 'daze', // D12 (plus the low-pass and heartbeat while hurt)
 });
 
 /**
@@ -40,10 +44,12 @@ export const EVENT_VOICES = Object.freeze({
  * without an unlocked AudioContext.
  * @returns {string[]}
  */
-export function voicesFor(e) {
+export function voicesFor(e, state) {
   switch (e.type) {
     case 'telegraph': {
       const v = [];
+      // D12: an exhausted Tamsin draws a breath before each wind-up (a real first strike only)
+      if (state?.opponent?.tired === 'exhausted' && !(e.comboIndex > 0)) v.push('her-breath');
       const follow = e.comboIndex > 0;
       if (follow && e.combo) {
         v.push('double-tick'); // chain cue: the full wind-up sound would be too slow for the gap
@@ -60,7 +66,19 @@ export function voicesFor(e) {
     case 'feint_cancel': return ['glove-tap', 'hah'];
     case 'cover': return ['leather-creak'];
     case 'pressure': return e.on ? ['shell-bark', 'jeer'] : [];
-    case 'hit': return e.interrupt ? [EVENT_VOICES.hit, 'cut-strike'] : [EVENT_VOICES.hit];
+    case 'hit': {
+      // D11: a low rising whump for uppercuts; D12: a duller body thud + "oof" for body shots
+      const v = e.target === 'body' ? ['body-dull', 'oof'] : [e.punchType === 'uppercut' ? 'whump' : EVENT_VOICES.hit];
+      if (e.riposte) v.push('brass-ding');
+      if (e.interrupt) v.push('cut-strike');
+      return v;
+    }
+    case 'parry': return [e.result === 'success' ? 'clack' : 'soft-whoosh'];
+    case 'opponent_tired': return e.level === 'fresh' ? [] : ['her-breath'];
+    case 'player_hurt': return ['daze'];
+    case 'count': return [e.who === 'player' ? 'woodblock-muffled' : 'woodblock'];
+    case 'blocked': return [e.by === 'player' && e.punchType === 'uppercut' ? 'elbow-thud' : EVENT_VOICES.blocked];
+    case 'guard_split': return ['leather-clap', 'grunt'];
     default: return EVENT_VOICES[e.type] ? [EVENT_VOICES[e.type]] : [];
   }
 }
@@ -137,6 +155,8 @@ export function createAudio() {
   }
 
   let strikeVoice = null; // the latest strike whoosh, so a late interrupt can cut it (BUG-009)
+  let muffle = null; // D12 master low-pass (hurt / the player's own count)
+  const hurtFx = { cutoff: 20000, lastBeat: -Infinity, beats: 0 };
 
   // ── voices
   const V = {
@@ -253,6 +273,23 @@ export function createAudio() {
       noise({ t: t + 0.15, a: 0.01, peak: 0.1, d: 0.06, f0: 3300, q: 2, pan }); // ch
       V.vowel(t + 0.19, { f0: 240, f1: 175, formants: [[800, 6, 1.4], [1250, 8, 0.9]], dur: 0.16, peak: 0.14, pan }); // a
     },
+    whump(t, power, pan) { // D11 uppercut landing: low and rising, under the hook's impact
+      const p = clamp01(power);
+      tone({ f0: 52, f1: 118, t, a: 0.004, peak: 0.42 + 0.35 * p, d: 0.16, pan });
+      tone({ f0: 80, f1: 150, t: t + 0.01, a: 0.004, peak: 0.12, d: 0.1, pan });
+      noise({ t, peak: 0.2 + 0.2 * p, d: 0.06, type: 'lowpass', f0: 700, f1: 1400, q: 0.8, pan });
+    },
+    elbowThud(t, pan) { // uppercut stopped by a tuck / cover: bone-dull, no leather slap
+      tone({ f0: 115, f1: 68, t, a: 0.002, peak: 0.34, d: 0.11, pan });
+      noise({ t, peak: 0.16, d: 0.05, type: 'lowpass', f0: 420, q: 1.2, pan });
+    },
+    leatherClap(t) { // the split: both gloves knocked apart
+      noise({ t, peak: 0.42, d: 0.05, type: 'bandpass', f0: 1700, q: 0.9 });
+      noise({ t: t + 0.012, peak: 0.2, d: 0.08, type: 'lowpass', f0: 900, q: 1 });
+    },
+    grunt(t) { // a short, low, voiced "uhh"
+      V.vowel(t, { f0: 175, f1: 135, formants: [[600, 6, 1.3], [1000, 8, 0.7]], dur: 0.16, peak: 0.13, breath: 0.08 });
+    },
     shellBark(t) { // "Come out of that shell!" — five quick syllables with a taunting rise on "shell"
       const syl = [
         [0.0, 0.1, 210, 200, [[640, 7, 1.3], [1190, 8, 0.8]]], // come
@@ -289,9 +326,39 @@ export function createAudio() {
       for (let i = 0; i < 6; i++) noise({ t: t + i * 0.028, peak: 0.07 * (1 - i * 0.12), d: 0.03, f0: 430 + i * 25, q: 7 });
       tone({ type: 'sawtooth', f0: 112, f1: 96, t, a: 0.02, peak: 0.05, d: 0.22, filter: { type: 'bandpass', f: 520, q: 12 } });
     },
-    woodblock(t, n) {
+    woodblock(t, n, muffled = false) {
+      if (muffled) { // through the canvas and a ringing head
+        tone({ f0: 520 + n * 18, t, a: 0.004, peak: 0.26, d: 0.18, filter: { type: 'lowpass', f: 600, q: 1 } });
+        return;
+      }
       tone({ f0: 820 + n * 25, t, a: 0.001, peak: 0.3, d: 0.08, filter: { type: 'bandpass', f: 900 + n * 25, q: 3 } });
       noise({ t, peak: 0.12, d: 0.015, f0: 3000, q: 2 });
+    },
+    bodyDull(t, power, pan) { // D12: lower and duller than a head impact
+      const p = clamp01(power);
+      tone({ f0: 95, f1: 55, t, a: 0.003, peak: 0.36 + 0.3 * p, d: 0.16, pan });
+      noise({ t, peak: 0.18 + 0.15 * p, d: 0.06, type: 'lowpass', f0: 600, q: 0.8, pan });
+    },
+    oof(t) { // the wind knocked out of her
+      V.vowel(t, { f0: 190, f1: 150, formants: [[330, 7, 1.3], [870, 8, 0.6]], dur: 0.14, peak: 0.12, breath: 0.1 });
+    },
+    clack(t, pan) { // D12 parry: a sharp leather clack
+      noise({ t, peak: 0.45, d: 0.035, type: 'bandpass', f0: 2600, q: 1.5, pan });
+      tone({ f0: 1400, f1: 900, t, a: 0.001, peak: 0.12, d: 0.05, pan });
+    },
+    softWhoosh(t, pan) {
+      noise({ t, a: 0.03, peak: 0.05, d: 0.2, f0: 700, f1: 1500, q: 1, pan });
+    },
+    herBreath(t, pan) { // D12: a heavy in-breath
+      noise({ t, a: 0.18, peak: 0.07, d: 0.25, f0: 900, f1: 1300, q: 1.2, pan });
+    },
+    daze(t) { // D12 hurt onset: a dull ring
+      tone({ f0: 440, t, a: 0.01, peak: 0.04, d: 0.9 });
+      tone({ f0: 446, t, a: 0.01, peak: 0.04, d: 0.9 });
+    },
+    heartbeat(t) {
+      tone({ f0: 62, f1: 45, t, a: 0.004, peak: 0.32, d: 0.12 });
+      tone({ f0: 58, f1: 42, t: t + 0.18, a: 0.004, peak: 0.22, d: 0.12 });
     },
   };
 
@@ -330,6 +397,7 @@ export function createAudio() {
       case 'telegraph':
       case 'feint_cancel':
       case 'cover':
+      case 'opponent_tired':
       case 'pressure': {
         const VOICE = {
           'rope-creak': () => V.ropeCreak(t, herPan),
@@ -344,18 +412,25 @@ export function createAudio() {
           'leather-creak': () => V.leatherCreak(t),
           'shell-bark': () => V.shellBark(t + 0.05),
           jeer: () => V.jeer(t),
+          'her-breath': () => V.herBreath(t, herPan),
         };
-        for (const v of voicesFor(e)) VOICE[v]?.();
+        for (const v of voicesFor(e, state)) VOICE[v]?.();
         break;
       }
       case 'strike': V.strikeWhoosh(t, herPan); break;
       case 'hit':
         if (e.interrupt) V.cutStrike();
-        V.impact(t, e.power ?? 0.6, myPan);
-        if (e.counter || e.interrupt) V.brassDing(t + 0.02);
+        if (e.target === 'body') { V.bodyDull(t, e.power ?? 0.6, myPan); V.oof(t + 0.05); }
+        else if (e.punchType === 'uppercut') V.whump(t, e.power ?? 0.6, myPan);
+        else V.impact(t, e.power ?? 0.6, myPan);
+        if (e.counter || e.interrupt || e.riposte) V.brassDing(t + 0.02);
         break;
       case 'player_hit': V.bodyThud(t, e.shakeTier ?? 1, herPan); break;
-      case 'blocked': V.leather(t, e.by === 'player' ? myPan : herPan, e.by === 'player' ? 0.22 : 0.32); break;
+      case 'blocked':
+        if (e.by === 'player' && e.punchType === 'uppercut') V.elbowThud(t, myPan);
+        else V.leather(t, e.by === 'player' ? myPan : herPan, e.by === 'player' ? 0.22 : 0.32);
+        break;
+      case 'guard_split': V.leatherClap(t); V.grunt(t + 0.07); break;
       case 'whiff': V.swish(t, myPan); break;
       case 'punch_thrown': V.whoosh(t, myPan); break;
       case 'punch_rejected': V.dullTick(t, myPan); break;
@@ -364,7 +439,15 @@ export function createAudio() {
       case 'opening': V.shimmer(t); break;
       case 'gassed': V.breath(t); break;
       case 'knockdown': V.bodyThud(t, 3, 0); V.crowd(t + 0.1, 'roar'); break;
-      case 'count': V.woodblock(t, e.n ?? 1); break;
+      case 'count':
+        if (e.who === 'player') V.woodblock(t, e.n ?? 1, true); // heard from the canvas: muffled
+        else V.woodblock(t, e.n ?? 1);
+        break;
+      case 'parry':
+        if (e.result === 'success') V.clack(t, myPan);
+        else V.softWhoosh(t, myPan);
+        break;
+      case 'player_hurt': V.daze(t); break;
       case 'getup': V.crowd(t, 'cheer'); break;
       case 'round_start': V.bell(t, 2); break;
       case 'round_end': V.bell(t, 1); break;
@@ -382,7 +465,11 @@ export function createAudio() {
         ac = new AC();
         master = ac.createGain();
         master.gain.value = muted ? 0 : volume;
-        master.connect(ac.destination);
+        // D12: everything goes through a low-pass that closes to ~800 Hz while the player is hurt
+        muffle = ac.createBiquadFilter();
+        muffle.type = 'lowpass';
+        muffle.frequency.value = 20000;
+        master.connect(muffle).connect(ac.destination);
         const len = ac.sampleRate * 2;
         noiseBuf = ac.createBuffer(1, len, ac.sampleRate);
         const d = noiseBuf.getChannelData(0);
@@ -396,11 +483,24 @@ export function createAudio() {
      * @param {import('../shared/types.js').GameState} state
      */
     handle(events, state) {
+      // D12 hurt (and the player's own count): muffled world + heartbeat. Driven by state, once per call.
+      const hurt = !!state && Number.isFinite(state.player?.hurtUntil) && state.time < state.player.hurtUntil;
+      const down = !!state?.player?.down;
+      const cutoff = hurt ? 800 : down ? 1400 : 20000;
+      if (cutoff !== hurtFx.cutoff) {
+        hurtFx.cutoff = cutoff;
+        if (muffle) muffle.frequency.setTargetAtTime(cutoff, ac.currentTime, 0.05);
+      }
+      if (hurt && state.time - hurtFx.lastBeat >= 0.8) {
+        hurtFx.lastBeat = state.time;
+        hurtFx.beats += 1;
+        if (ac && ac.state === 'running' && !muted) V.heartbeat(ac.currentTime + 0.01);
+      }
       for (const e of events) {
         const voice = EVENT_VOICES[e.type];
         if (!voice) continue;
         responses[e.type] = (responses[e.type] ?? 0) + 1;
-        log.push({ type: e.type, voice, voices: voicesFor(e) });
+        log.push({ type: e.type, voice, voices: voicesFor(e, state) });
         if (log.length > 200) log.shift();
         // nothing plays until the player's gesture has unlocked the context
         if (!ac || ac.state !== 'running' || muted) continue;
@@ -427,7 +527,7 @@ export function createAudio() {
     },
     /** Test/debug only. */
     debug() {
-      return { responses: { ...responses }, log: log.slice(-20), state: ac?.state ?? 'locked', muted };
+      return { responses: { ...responses }, log: log.slice(-20), state: ac?.state ?? 'locked', muted, cutoff: hurtFx.cutoff, beats: hurtFx.beats };
     },
   };
 

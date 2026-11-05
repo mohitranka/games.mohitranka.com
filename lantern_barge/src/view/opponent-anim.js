@@ -279,12 +279,15 @@ function hurtPose(o, tIn, t, lastHit) {
   const snap = easeOut(clamp01(tIn / 0.08)) * (1 - smooth(clamp01((tIn - 0.08) / (D - 0.08))));
   const dir = lastHit?.hand === 'left' ? 1 : lastHit?.hand === 'right' ? -1 : 0;
   const hook = lastHit?.punchType === 'hook';
+  const upper = lastHit?.punchType === 'uppercut';
+  const body = lastHit?.target === 'body'; // a body hit never snaps the head (the fold is additive, below)
   const p = guardPose('low', t);
-  p.headPitch = -0.55 * snap * (hook ? 0.4 : 1);
-  p.headYaw = dir * (hook ? 0.7 : 0.25) * snap;
-  p.headRoll = -dir * 0.25 * snap;
-  p.lean = -0.25 * snap;
+  p.headPitch = -0.55 * snap * (body ? 0 : hook ? 0.4 : upper ? 1.45 : 1); // D11: the uppercut snaps the chin up and back
+  p.headYaw = dir * (hook ? 0.7 : upper ? 0.05 : 0.25) * snap;
+  p.headRoll = -dir * (upper ? 0.05 : 0.25) * snap;
+  p.lean = -(upper ? 0.32 : 0.25) * snap;
   p.z = -0.12 * snap;
+  if (upper) p.hipY += 0.035 * snap; // lifted onto her heels
   if (big) {
     const wob = Math.sin(tIn * 9) * (1 - u);
     p.z = -0.3 * Math.sin(Math.PI * Math.min(1, u * 1.4));
@@ -416,6 +419,41 @@ export function computeOpponentPose(state, t, ctx = {}) {
     }
   }
 
+  // D11 guard split: her gloves are knocked apart and up, then hang low until opponent.splitUntil
+  const F = ctx.features ?? {}; // ?next=1 flags (frame.features); without them nothing below D11 is drawn
+  const splitLive = !!F.uppercut && Number.isFinite(o.splitUntil) && state.time < o.splitUntil;
+  if (F.uppercut && ctx.split && o.state !== 'knockdown' && o.state !== 'getup' && (splitLive || t - ctx.split.t < 0.05)) {
+    const age = t - ctx.split.t;
+    if (age >= 0) {
+      const fly = easeOut(clamp01(age / 0.07)) * (1 - smooth(clamp01((age - 0.07) / 0.12)));
+      const low = smooth(clamp01((age - 0.07) / 0.12));
+      const keep = { lGlow: NO_GLOW, rGlow: NO_GLOW };
+      const sp = { ...p };
+      sp.lHand = [lerp(0.36, 0.3, low), lerp(1.86, 1.05, low), lerp(0.16, 0.22, low)];
+      sp.rHand = [lerp(-0.36, -0.3, low), lerp(1.86, 1.05, low), lerp(0.16, 0.22, low)];
+      sp.lPole = [1, -0.3, -0.3];
+      sp.rPole = [-1, -0.3, -0.3];
+      sp.headPitch = -0.2 * fly + 0.02;
+      sp.lean = p.lean - 0.08 * fly;
+      p = { ...lerpPose(p, sp, Math.max(fly, low)), ...keep };
+    }
+  }
+
+  // D11 tuck: elbows pinched, gloves tight together at the chin, chin down (circle, and her off hand in a telegraph)
+  const tucked = !!F.uppercut && Number.isFinite(o.tuckUntil) && state.time < o.tuckUntil && !splitLive;
+  if (tucked && (o.state === 'circle' || o.state === 'telegraph') && !o.covering) {
+    const k = ctx.tuck ? easeOut(clamp01((t - ctx.tuck.t) / 0.15)) : 1;
+    const striking = o.state === 'telegraph' ? (o.side === 'right' ? 'rHand' : 'lHand') : null;
+    const tk = { ...p };
+    if (striking !== 'lHand') { tk.lHand = [0.07, 1.6, 0.24]; tk.lPole = [0.05, -1, 0.35]; }
+    if (striking !== 'rHand') { tk.rHand = [-0.07, 1.6, 0.24]; tk.rPole = [-0.05, -1, 0.35]; }
+    if (!striking) {
+      tk.headPitch = 0.3;
+      tk.hipY = p.hipY - 0.03;
+    }
+    p = { ...lerpPose(p, tk, k), lGlow: p.lGlow, rGlow: p.rGlow };
+  }
+
   // D9 cover-up: gloves tight at the temples, chin tucked, elbows in, while opponent.covering is true
   if (o.covering && o.state !== 'knockdown' && o.state !== 'getup') {
     const k = ctx.cover ? easeOut(clamp01((t - ctx.cover.t) / 0.1)) : 1;
@@ -443,14 +481,55 @@ export function computeOpponentPose(state, t, ctx = {}) {
   }
 
   // additive reactions: flinch on any landed hit, glove bounce when she blocks
-  if (ctx.lastHit && o.state !== 'knockdown' && o.state !== 'getup') {
+  // D12 tired / exhausted: lower shoulders and visible breathing; exhausted gloves sag and the head drops
+  const tired = !!F.body && (o.tired === 'tired' || o.tired === 'exhausted');
+  if (tired && (o.state === 'circle' || o.state === 'recover') && !o.covering && !o.mitts) {
+    const ex = o.tired === 'exhausted';
+    const breath = Math.sin(t * (ex ? 4.2 : 3.2));
+    const sag = ex ? 0.12 : 0.05;
+    p.lHand = [p.lHand[0], p.lHand[1] - sag + 0.012 * breath, p.lHand[2]];
+    p.rHand = [p.rHand[0], p.rHand[1] - sag + 0.012 * breath, p.rHand[2]];
+    p.hipY += (ex ? 0.022 : 0.012) * breath - (ex ? 0.03 : 0.015);
+    p.headPitch += ex ? 0.14 : 0.05;
+    p.lean += ex ? 0.06 : 0.02;
+  }
+
+  // D12 parry: her striking arm is knocked wide and up
+  if (F.parry && ctx.parry && o.state !== 'knockdown' && o.state !== 'getup') {
+    const age = t - ctx.parry.t;
+    if (age >= 0 && age < 0.4) {
+      const k = Math.sin(Math.PI * clamp01(age / 0.4)) * (age < 0.05 ? age / 0.05 : 1);
+      const key = ctx.parry.herSide === 'left' ? 'lHand' : 'rHand';
+      const sx = ctx.parry.herSide === 'left' ? 1 : -1;
+      p[key] = [p[key][0] + sx * 0.45 * k, p[key][1] + 0.12 * k, p[key][2] - 0.2 * k];
+      p.twist += sx * 0.25 * k;
+      p.lean -= 0.08 * k;
+      if (sx > 0) p.lGlow = NO_GLOW;
+      else p.rGlow = NO_GLOW;
+    }
+  }
+
+  // D12 body hit: she folds at the waist (no head snap)
+  if (F.body && ctx.lastHit?.target === 'body' && o.state !== 'knockdown' && o.state !== 'getup') {
+    const age = t - ctx.lastHit.t;
+    if (age >= 0 && age < 0.35) {
+      const k = Math.sin(Math.PI * clamp01(age / 0.35));
+      p.lean += 0.35 * k;
+      p.hipY -= 0.06 * k;
+      p.headPitch += 0.25 * k;
+      p.lHand = [p.lHand[0] * (1 - 0.3 * k), p.lHand[1] - 0.18 * k, p.lHand[2] - 0.04 * k];
+      p.rHand = [p.rHand[0] * (1 - 0.3 * k), p.rHand[1] - 0.18 * k, p.rHand[2] - 0.04 * k];
+    }
+  } else if (ctx.lastHit && o.state !== 'knockdown' && o.state !== 'getup') {
     const age = t - ctx.lastHit.t;
     if (age >= 0 && age < 0.25) {
       const k = Math.sin(Math.PI * clamp01(age / 0.25)) * (o.state === 'hurt' ? 0.3 : 1);
       const dir = ctx.lastHit.hand === 'left' ? 1 : -1;
-      p.headPitch -= 0.25 * k;
-      p.headYaw += dir * 0.2 * k;
-      p.lean -= 0.06 * k;
+      const upper = ctx.lastHit.punchType === 'uppercut';
+      p.headPitch -= (upper ? 0.55 : 0.25) * k; // up and back for the uppercut
+      p.headYaw += dir * (upper ? 0.04 : 0.2) * k;
+      p.lean -= (upper ? 0.12 : 0.06) * k;
+      if (upper) p.hipY += 0.02 * k;
     }
   }
   if (ctx.lastBlock) {

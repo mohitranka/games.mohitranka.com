@@ -46,7 +46,9 @@ export function runRecognizer(rec, { tuning = defaultTuning, profile = null } = 
       continue;
     }
     for (const p of out.punches) {
-      punches.push({ ...p, tOnsetMs: p.tOnset * 1000, tCommitMs: p.tCommit * 1000, pipe: r.pipe ?? null });
+      // D12 parry events are scored like punches with punchType 'parry' (cue expect {hand, punchType:'parry'})
+      const typed = p.type === 'parry' ? { ...p, punchType: 'parry' } : p;
+      punches.push({ ...typed, tOnsetMs: p.tOnset * 1000, tCommitMs: p.tCommit * 1000, pipe: r.pipe ?? null });
     }
   }
   return { punches, profile: calibrated ?? profile ?? DEFAULT_PROFILE, calibrated: !!calibrated, calibEndMs };
@@ -73,7 +75,8 @@ export function score(rec, punches, { window = MATCH_WINDOW_MS } = {}) {
       const p = punches[i];
       if (used.has(i) || p.tOnsetMs < lo || p.tOnsetMs > hi) continue;
       const handOk = c.expect.hand === 'any' || c.expect.hand === p.hand;
-      if (handOk && c.expect.punchType === p.punchType) {
+      const targetOk = !c.expect.target || (p.target ?? 'head') === c.expect.target; // D12 body cues
+      if (handOk && targetOk && c.expect.punchType === p.punchType) {
         best = i;
         break;
       }
@@ -100,6 +103,19 @@ export function score(rec, punches, { window = MATCH_WINDOW_MS } = {}) {
   const fpIdle = unmatched.filter((p) => p.segment === 'idle' || p.segment === 'guard');
   const idleMin = ((segMs.idle ?? 0) + (segMs.guard ?? 0)) / 60000;
   const lat = matched.map((m) => m.punch.tCommitMs - m.punch.tOnsetMs);
+  // per punch type (D11 acceptance is per type: uppercut recall ≥ 85 %, straight/hook within 2 points)
+  const byType = {};
+  for (const c of positives) {
+    const k = c.expect.target === 'body' ? `body_${c.expect.punchType}` : c.expect.punchType;
+    byType[k] ??= { cues: 0, matched: 0, recall: null, falsePunches: 0 };
+    byType[k].cues += 1;
+  }
+  for (const m of matched) byType[m.cue.expect.target === 'body' ? `body_${m.cue.expect.punchType}` : m.cue.expect.punchType].matched += 1;
+  for (const p of fpScored) {
+    byType[p.punchType] ??= { cues: 0, matched: 0, recall: null, falsePunches: 0 };
+    byType[p.punchType].falsePunches += 1;
+  }
+  for (const v of Object.values(byType)) v.recall = v.cues ? v.matched / v.cues : null;
   const pipes = matched.map((m) => m.punch.pipe).filter((v) => typeof v === 'number');
   return {
     cues: positives.length,
@@ -111,6 +127,7 @@ export function score(rec, punches, { window = MATCH_WINDOW_MS } = {}) {
     idleMinutes: Math.round(idleMin * 1000) / 1000,
     falsePerIdleMinute: idleMin > 0 ? fpIdle.length / idleMin : null,
     inferred: matched.filter((m) => m.punch.inferred).length,
+    byType,
     confusion,
     latencyMs: { onsetToCommitMean: lat.length ? lat.reduce((a, b) => a + b, 0) / lat.length : null, onsetToCommitP95: pct(lat, 0.95), pipelineMean: pipes.length ? pipes.reduce((a, b) => a + b, 0) / pipes.length : null },
     falsePunchList: fpScored.slice(0, 50).map((p) => ({ t: Math.round(p.tOnsetMs), hand: p.hand, punchType: p.punchType, segment: p.segment })),

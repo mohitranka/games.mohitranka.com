@@ -9,12 +9,13 @@
 //   5. display flags; push the opponent snapshot
 // Deterministic: the sim reads time only from the tick count and randomness only from rng.js.
 
-import { SIM_DT, PHASE, COMMAND, DEBUG_COMMANDS, ATTACK, INPUT_EVENT } from '../shared/constants.js';
+import { SIM_DT, PHASE, COMMAND, DEBUG_COMMANDS, ATTACK, INPUT_EVENT, PUNCH } from '../shared/constants.js';
 import { createInitialState, createInputFrame } from '../shared/fixtures.js';
 import { tuning as defaultTuning } from './tuning.js';
 import { createRng } from './rng.js';
 import { EPS, regen, updateFlags } from './stamina.js';
-import { resolvePlayerPunch, pushSnapshot, recordGuardSample } from './combat.js';
+import { resolvePlayerPunch, pushSnapshot, recordGuardSample, snapshotAt } from './combat.js';
+import { resolveParry, parryLocked } from './defence.js';
 import { createAIContext, forceAttack, forceSequence, toCircle, syncOpponent } from './opponent-ai.js';
 import { createPressureContext } from './pressure.js';
 import {
@@ -57,14 +58,17 @@ function setPath(root, path, value) {
 }
 
 /**
- * @param {{seed?:number, tuning?:object, allowDebug?:boolean}} [opts]
+ * @param {{seed?:number, tuning?:object, allowDebug?:boolean, features?:object}} [opts]
+ *   features: main's frozen ?next=1 flags {uppercut, body, parry, rise, slip}; a feature is on unless false
  * @returns {import('../shared/types.js').Sim}
  */
-export function createSim({ seed = 1, tuning = defaultTuning, allowDebug = false } = {}) {
+export function createSim({ seed = 1, tuning = defaultTuning, allowDebug = false, features = {} } = {}) {
   const T = tuning;
+  const on = (f) => features?.[f] !== false;
   const queue = [];
   const w = {
     T,
+    on,
     state: null,
     ctx: null,
     rng: null,
@@ -107,12 +111,19 @@ export function createSim({ seed = 1, tuning = defaultTuning, allowDebug = false
     o.stageStart += d;
     if (o.contactAt !== null) o.contactAt += d;
     o.staggerImmuneUntil = sh(o.staggerImmuneUntil);
+    o.splitUntil = sh(o.splitUntil); // D11
+    o.tuckUntil = sh(o.tuckUntil);
+    w.ctx.ai.splitStart = sh(w.ctx.ai.splitStart);
     if (o.down) o.down.since += d;
     w.ctx.lastActionT = sh(w.ctx.lastActionT);
     w.ctx.pressure.lastCounterT += d;
     w.ctx.countdownT0 += d;
     w.ctx.ai.cleanHits = w.ctx.ai.cleanHits.map((x) => x + d);
     if (w.ctx.ai.feintCancelAt !== null) w.ctx.ai.feintCancelAt += d;
+    p.hurtUntil = sh(p.hurtUntil ?? -1); // D12
+    w.ctx.parryLockUntil = sh(w.ctx.parryLockUntil ?? -1);
+    w.ctx.unblockedHits = (w.ctx.unblockedHits ?? []).map((x) => x + d);
+    if (w.ctx.rise) for (const k of ['holdStart', 'lastOk', 'doneAt']) if (w.ctx.rise[k] !== null) w.ctx.rise[k] += d;
     w.ctx.ai.feintCoverUntil = sh(w.ctx.ai.feintCoverUntil);
     w.ctx.ring.length = 0; // pre-pause snapshots and samples no longer line up with the shifted timeline
     w.ctx.guardSamples.length = 0;
@@ -187,11 +198,19 @@ export function createSim({ seed = 1, tuning = defaultTuning, allowDebug = false
     }
   }
 
+  /** A live round: FIGHT, clock running (not the countdown, a knockdown count or the rest). */
+  function liveRound() {
+    const st = w.state;
+    return st.phase === PHASE.FIGHT && st.round.countdown === null && st.round.clockRunning;
+  }
+
   function updateGuard(frame) {
     const st = w.state;
     const p = st.player;
     const t = st.time;
-    const broken = t < p.guardBrokenUntil - EPS;
+    // a guard break, or a missed parry's glove (D12), takes the guard down whatever the input says
+    const broken = t < p.guardBrokenUntil - EPS || parryLocked(w);
+    if (parryLocked(w) && frame.guard) frame.guard = { ...frame.guard, raw: false };
     const level = broken ? 'none' : frame.guard?.level === 'full' ? 'full' : 'none';
     if (level === 'full' && p.guard !== 'full') p.guardHeldSince = t;
     if (level !== 'full') p.guardHeldSince = -1;
@@ -219,7 +238,13 @@ export function createSim({ seed = 1, tuning = defaultTuning, allowDebug = false
         // regen first, so the tick on which gassed ends already has stamina > 0 for a punch
         if (st.phase === PHASE.FIGHT && st.round.countdown === null) regen(w, dt);
         for (const ev of w.frame.events ?? []) {
-          if (ev.type === INPUT_EVENT.PUNCH) resolvePlayerPunch(w, ev);
+          if (ev.type === INPUT_EVENT.PARRY) {
+            if (on('parry') && liveRound()) resolveParry(w, ev, (h) => snapshotAt(w, h)); // D12, behind ?next=1
+            continue;
+          }
+          if (ev.type !== INPUT_EVENT.PUNCH) continue;
+          if (ev.punchType === PUNCH.UPPERCUT && !on('uppercut')) continue; // D11 is behind ?next=1
+          resolvePlayerPunch(w, ev);
         }
         updatePhase(w, dt);
       }

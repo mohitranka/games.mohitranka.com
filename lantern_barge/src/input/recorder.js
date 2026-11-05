@@ -10,17 +10,25 @@ const LABEL = {
   'left hook': 'LEFT HOOK',
   'right hook': 'RIGHT HOOK',
   'any straight': 'STRAIGHT (either hand)',
+  'left uppercut': 'LEFT UPPERCUT',
+  'right uppercut': 'RIGHT UPPERCUT',
+  'left straight body': 'LEFT STRAIGHT to the BODY',
+  'right straight body': 'RIGHT STRAIGHT to the BODY',
+  'left hook body': 'LEFT HOOK to the BODY',
+  'right hook body': 'RIGHT HOOK to the BODY',
+  'left parry': 'LEFT PARRY (swipe out)',
+  'right parry': 'RIGHT PARRY (swipe out)',
 };
-const P = (hand, punchType) => [hand, punchType];
+const P = (hand, punchType, target) => (target ? [hand, punchType, target] : [hand, punchType]);
 const rep = (n, item) => Array.from({ length: n }, () => item);
 
 function mixed(n, seed = 3) {
-  const all = [P('left', 'straight'), P('right', 'straight'), P('left', 'hook'), P('right', 'hook')];
+  const all = [P('left', 'straight'), P('right', 'straight'), P('left', 'hook'), P('right', 'hook'), P('left', 'uppercut'), P('right', 'uppercut')];
   let s = seed;
   const out = [];
   for (let i = 0; i < n; i++) {
     s = (s * 1103515245 + 12345) & 0x7fffffff;
-    out.push(all[s % 4]);
+    out.push(all[s % all.length]);
   }
   return out;
 }
@@ -36,6 +44,9 @@ export const PROMPT_SCRIPTS = Object.freeze({
     { segment: 'punch', say: 'Right straights', cues: rep(8, P('right', 'straight')), every: 2.2 },
     { segment: 'punch', say: 'Left hooks', cues: rep(8, P('left', 'hook')), every: 2.2 },
     { segment: 'punch', say: 'Right hooks', cues: rep(8, P('right', 'hook')), every: 2.2 },
+    // D11: uppercuts — dip below your guard, then drive straight up through the gap to chin height
+    { segment: 'punch', say: 'Left uppercuts (dip, then straight up)', cues: rep(8, P('left', 'uppercut')), every: 2.4 },
+    { segment: 'punch', say: 'Right uppercuts (dip, then straight up)', cues: rep(8, P('right', 'uppercut')), every: 2.4 },
     { segment: 'punch', say: 'Mixed: follow the prompt', cues: mixed(16), every: 2.0 },
     { segment: 'idle', say: 'Relax, hands down, look around. No punches.', dur: 30 },
     { segment: 'idle', say: 'Talk with your hands. No punches.', dur: 30 },
@@ -44,6 +55,15 @@ export const PROMPT_SCRIPTS = Object.freeze({
     { segment: 'guard', say: 'Guard up and lean toward the screen and back. No punches.', dur: 15 },
     { segment: 'idle', say: 'Push OPEN palms toward the screen (slaps, not punches)', dur: 15 },
     { segment: 'idle', say: 'Drop your hands, then slowly raise your guard again', dur: 10 },
+    // D12: body shots (bend the knees, punch at belly height) and parries (swipe the fist outward from guard)
+    { segment: 'punch', say: 'Body straights: bend your knees, punch at belly height', cues: [...rep(4, P('left', 'straight', 'body')), ...rep(4, P('right', 'straight', 'body'))], every: 2.2 },
+    { segment: 'punch', say: 'Body hooks: low hooks at belly height', cues: [...rep(4, P('left', 'hook', 'body')), ...rep(4, P('right', 'hook', 'body'))], every: 2.2 },
+    { segment: 'punch', say: 'Parries: swipe the fist OUTWARD from your guard, then back', cues: [...rep(6, P('left', 'parry')), ...rep(6, P('right', 'parry'))], every: 1.8 },
+    // D12 negatives: spreading both fists apart (not a parry), hooks (inward, not a parry)
+    { segment: 'guard', say: 'Spread BOTH fists apart and back together. NO parries.', dur: 15 },
+    // D11 negatives: the motions most like an uppercut
+    { segment: 'guard', say: 'Punch, then pull back down and re-raise your guard. NO uppercuts.', dur: 20 },
+    { segment: 'idle', say: 'Drop both hands to your waist, then raise them quickly. NO punches.', dur: 20 },
   ],
   // ~6 s; used by the headless recorder spec (fake camera) — no real person needed
   short: [
@@ -64,9 +84,9 @@ export function buildTimeline(steps) {
     tl.push({ at, text: st.say, cue: { expect: null, segment: st.segment } });
     if (st.cues) {
       at += LEAD_S;
-      for (const [hand, punchType] of st.cues) {
-        tl.push({ at: at - LEAD_S * 0.8, text: `${LABEL[`${hand} ${punchType}`]} …` });
-        tl.push({ at, text: 'NOW!', cue: { expect: { hand, punchType }, segment: st.segment } });
+      for (const [hand, punchType, target] of st.cues) {
+        tl.push({ at: at - LEAD_S * 0.8, text: `${LABEL[`${hand} ${punchType}${target ? ` ${target}` : ''}`]} …` });
+        tl.push({ at, text: 'NOW!', cue: { expect: target ? { hand, punchType, target } : { hand, punchType }, segment: st.segment } });
         at += st.every;
       }
     } else at += st.dur;
@@ -153,7 +173,7 @@ export function createRecorder({ source, script = 'full', meta = {}, onPrompt = 
       unsub = source.onRaw((r) => {
         if (r.ts < t0) return;
         size = { w: r.w, h: r.h };
-        results.push({ t: Math.round((r.ts - t0) * 1000) / 1000, hands: r.hands, pipe: Math.round(r.arrival - r.ts) });
+        results.push({ t: Math.round((r.ts - t0) * 1000) / 1000, hands: r.hands, pipe: Math.round(r.arrival - r.ts), ...(r.face !== undefined ? { face: r.face } : {}) });
       });
       timer = setInterval(step, 30);
       step();

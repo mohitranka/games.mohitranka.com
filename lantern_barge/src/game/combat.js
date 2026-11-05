@@ -11,9 +11,13 @@
 //   * her strike resolves at contact + impactDelay and is blocked by ≥ 2 consecutive raw guard samples
 //     spanning ≥ 30 ms inside [contact, contact + impactDelay].
 
-import { EVENT, OPP_STATE, ATTACK, PHASE, PUNCH } from '../shared/constants.js';
+import { EVENT, OPP_STATE, ATTACK, PHASE, PUNCH, TARGET } from '../shared/constants.js';
 import { EPS, isGassed, punchCost, fatigueFactor, spend } from './stamina.js';
-import { staggerOpponent, extendOffBalance, liveWindow, windowLeft, spendFreeHit } from './opponent-ai.js';
+import {
+  staggerOpponent, extendOffBalance, liveWindow, windowLeft, spendFreeHit, splitGuard, tucked, splitOverlay,
+  addOppStamina,
+} from './opponent-ai.js';
+import { isHurt, noteStrikeOutcome } from './defence.js';
 import { knockdown } from './phases.js';
 import { noteCounter } from './pressure.js';
 
@@ -40,6 +44,9 @@ export function snapshotOf(w) {
     staggerImmuneUntil: o.staggerImmuneUntil,
     feint: o.feint,
     covering: o.covering,
+    windowCover: !!w.ctx.ai.windowCover, // cover-up from spent free hits (D11: counts as tucked)
+    tuckUntil: o.tuckUntil ?? -1,
+    riposte: o.state === OPP_STATE.RECOVER && w.ctx.ai.riposteWin !== null && w.ctx.ai.recoverWin === w.ctx.ai.riposteWin, // D12
     winId: liveWindow(w), // free-hit window her state belonged to at this tick (D9)
     seq: w.ctx.ai.seq,
   };
@@ -92,46 +99,76 @@ export function lateBlock(samples, contactAt, T) {
   return false;
 }
 
-// ───────────────────────────────────────────── classification (GDD §6 interaction table, D9)
+// ───────────────────────────────────────────── classification (GDD §6 interaction table, D9, D11)
 
 /**
  * Classify against the snapshot. Free-hit budgets are checked afterwards against the LIVE window (combat
- * resolves on the current tick), see resolvePlayerPunch.
+ * resolves on the current tick), see resolvePlayerPunch. `live.tucked`: she is tucked now (D11), which also
+ * blocks an uppercut classified into a snapshot from just before a split.
  * @returns {{kind:'whiff'|'blocked'|'hit', M:number, counter:boolean, interrupt:boolean, clean:boolean,
- *            stagger:boolean}}
+ *            stagger:boolean, split:boolean}}
  */
-export function classifyPunch(T, snap, punch, hitTime) {
-  const res = { kind: 'hit', M: 1, counter: false, interrupt: false, clean: true, stagger: false };
-  const straight = punch.punchType !== PUNCH.HOOK;
+export function classifyPunch(T, snap, punch, hitTime, live = { tucked: false }) {
+  const res = { kind: 'hit', M: 1, counter: false, interrupt: false, clean: true, stagger: false, split: false, riposte: false };
+  const type = punch.punchType;
+  const upper = type === PUNCH.UPPERCUT;
+  const body = punch.target === TARGET.BODY; // D12: straights and hooks only (resolvePlayerPunch enforces)
   if (snap.state === OPP_STATE.KNOCKDOWN || snap.state === OPP_STATE.GETUP) return { ...res, kind: 'whiff', clean: false };
   const aimX = punch.aim?.x ?? 0.5;
-  if (straight && (aimX < T.aimZone[0] - EPS || aimX > T.aimZone[1] + EPS)) return { ...res, kind: 'whiff', clean: false };
+  const zone = upper ? T.aimZoneUppercut : type === PUNCH.HOOK ? null : T.aimZone; // hooks always reach
+  if (zone && (aimX < zone[0] - EPS || aimX > zone[1] + EPS)) return { ...res, kind: 'whiff', clean: false };
 
-  // interrupt window: a REAL Anchor Drop only (a feint is cancelled before its window would open)
+  if (body) return classifyBody(T, snap, res);
+
+  // interrupt window: a REAL Anchor Drop only (a feint is cancelled before its window would open); STRAIGHTS only
   if (snap.state === OPP_STATE.TELEGRAPH && snap.attack === ATTACK.ANCHOR_DROP && !snap.feint && snap.contactAt !== null) {
     const open = snap.contactAt - T.interruptWindowOpen;
     const close = interruptWindowClose(T, snap.contactAt);
     const inWindow = hitTime >= open - EPS && hitTime <= close + EPS;
-    if (inWindow && straight && punch.power >= T.interruptPowerMin - EPS) {
+    if (inWindow && type === PUNCH.STRAIGHT && punch.power >= T.interruptPowerMin - EPS) {
       return { ...res, M: T.interruptMult, interrupt: true };
     }
   }
 
   // any high guard: circle high, telegraphs before the interrupt window, feints, cover-up
-  if (snap.guard === 'high') return highGuard(T, res, straight);
-  if (snap.state === OPP_STATE.RECOVER) return { ...res, M: T.counterMult, counter: true };
-  // circle with a low guard is the only plain state that staggers (hurt is already staggered)
-  return { ...res, stagger: snap.state === OPP_STATE.CIRCLE };
+  if (snap.guard === 'high') {
+    const tuckedOrCovered = snap.windowCover || hitTime < (snap.tuckUntil ?? -1) - EPS || live.tucked;
+    if (upper && !tuckedOrCovered) return { ...res, M: T.splitMult, clean: false, split: true }; // D11 split
+    return highGuard(T, res, type);
+  }
+  if (snap.state === OPP_STATE.RECOVER) {
+    if (snap.riposte) return { ...res, M: T.riposteMult, counter: true, riposte: true }; // D12, not stacked
+    return { ...res, M: upper ? T.uppercutCounterMult : T.counterMult, counter: true };
+  }
+  // circle low / split window (low) is the only plain state that staggers (hurt is already staggered)
+  const M = !upper ? 1 : snap.guard === 'low' ? T.uppercutLowMult : T.uppercutOpenMult;
+  return { ...res, M, stagger: snap.state === OPP_STATE.CIRCLE };
+}
+
+/**
+ * D12 body column (GDD §13.1): high guard / tuck and cover-up M 0.5 (not clean, the drain still applies); her low
+ * guard and the split window block; Recover counters (riposte 1.5); Hurt, Attack, an open telegraph M 1.0. A body
+ * shot never interrupts and never staggers.
+ */
+function classifyBody(T, snap, res) {
+  if (snap.guard === 'high') return { ...res, M: snap.windowCover ? T.bodyCoverMult : T.bodyHighGuardMult, clean: false };
+  if (snap.state === OPP_STATE.RECOVER) {
+    return snap.riposte ? { ...res, M: T.riposteMult, counter: true, riposte: true } : { ...res, M: T.counterMult, counter: true };
+  }
+  if (snap.guard === 'low' && snap.state !== OPP_STATE.HURT) return { ...res, kind: 'blocked', M: 0, clean: false };
+  return res; // Hurt, Attack, an open telegraph: M 1.0, clean, no stagger
+}
+
+/** Her high guard when nothing better applies (tucked / covered for an uppercut): straight and uppercut blocked. */
+function highGuard(T, res, type, body = false) {
+  if (body) return { ...res, M: T.bodyCoverMult, clean: false, counter: false, stagger: false, split: false, riposte: false };
+  if (type !== PUNCH.HOOK) return { ...res, kind: 'blocked', M: 0, clean: false, counter: false, stagger: false, split: false, riposte: false };
+  return { ...res, M: T.highGuardHookMult, clean: false, counter: false, stagger: false, split: false, riposte: false };
 }
 
 /** The interrupt window closes this long before contact (BUG-009: the backdate is part of the budget). */
 export function interruptWindowClose(T, contactAt) {
   return contactAt - (T.latencyBudget + T.punchBackdate - T.impactDelay);
-}
-
-function highGuard(T, res, straight) {
-  if (straight) return { ...res, kind: 'blocked', M: 0, clean: false, counter: false, stagger: false };
-  return { ...res, M: T.highGuardHookMult, clean: false, counter: false, stagger: false };
 }
 
 // ───────────────────────────────────────────── points (D9: % of the opponent's max HP, 0.1 steps)
@@ -165,21 +202,28 @@ export function resolvePlayerPunch(w, ev) {
   const { id, hand, punchType } = ev;
   const power = Math.min(1, Math.max(0, +ev.power || 0));
   if (p.down) return; // the player is on the canvas: input is ignored until the get-up
+  // D12: body shots are straights and hooks only, behind features.body; everything else is a head shot
+  const bodyOk = (w.on ? w.on('body') : true) && (punchType === PUNCH.STRAIGHT || punchType === PUNCH.HOOK);
+  const target = bodyOk && ev.target === TARGET.BODY ? TARGET.BODY : TARGET.HEAD;
+  const body = target === TARGET.BODY;
 
   const live = punchesResolve(st);
   if (live && (isGassed(p, t) || p.stamina <= 0)) {
     w.emit(EVENT.PUNCH_REJECTED, { id, hand, reason: 'gassed' });
     return;
   }
-  w.emit(EVENT.PUNCH_THROWN, { id, hand, punchType, power, inferred: !!ev.inferred });
+  w.emit(EVENT.PUNCH_THROWN, { id, hand, punchType, power, inferred: !!ev.inferred, target });
   if (!live) return; // practice (mitts, no damage), countdown, rest, boot, match end
 
   p.stats.thrown += 1;
   const fatigue = fatigueFactor(T, p);
-  let cost = punchCost(T, power);
+  let cost = punchCost(T, power, punchType);
+  const upper = punchType === PUNCH.UPPERCUT;
+  const hurt = isHurt(w); // D12: heavy gloves
+  if (hurt) cost += T.hurtPunchExtraStamina;
   const hitTime = ev.tOnset - T.punchBackdate;
-  const snap = o.down ? { ...snapshotOf(w), state: OPP_STATE.KNOCKDOWN } : snapshotAt(w, hitTime);
-  const c = classifyPunch(T, snap, { punchType, power, aim: ev.aim }, hitTime);
+  const snap = o.down ? { ...snapshotOf(w), state: OPP_STATE.KNOCKDOWN } : splitOverlay(w, snapshotAt(w, hitTime), hitTime);
+  const c = classifyPunch(T, snap, { punchType, power, aim: ev.aim, target }, hitTime, { tucked: tucked(w) });
 
   // An interrupt only counts while the strike it would cancel is still unresolved (same attack sequence).
   if (c.interrupt) {
@@ -193,11 +237,11 @@ export function resolvePlayerPunch(w, ev) {
   let spendWin = null;
   if (c.kind === 'hit' && c.clean && !c.interrupt && snap.winId != null) {
     if (windowLeft(w, snap.winId) > 0) spendWin = snap.winId;
-    else Object.assign(c, highGuard(T, c, punchType !== PUNCH.HOOK)); // she has covered up
+    else Object.assign(c, highGuard(T, c, punchType, body)); // she has covered up (counts as tucked for an uppercut)
   }
 
   if (c.kind === 'whiff') {
-    cost += T.whiffExtraStamina;
+    cost += upper ? T.uppercutExtraStamina : T.whiffExtraStamina; // D11: +6 for an uppercut
     p.stats.whiffed += 1;
     w.emit(EVENT.WHIFF, { by: 'player', id, hand, punchType });
     spend(w, cost);
@@ -206,26 +250,40 @@ export function resolvePlayerPunch(w, ev) {
   if (c.kind === 'blocked') {
     p.stats.blocked += 1;
     w.emit(EVENT.BLOCKED, { by: 'player', hand, punchType, attack: null, staminaCost: 0 });
-    spend(w, cost + T.blockedStraightExtraStamina); // D9a: hitting her glove is tiring
+    const extra = body ? T.bodyBlockedExtraStamina : upper ? T.uppercutExtraStamina : T.blockedStraightExtraStamina;
+    spend(w, cost + extra); // D9a / D11 / D12
     return;
   }
 
   const base = T.baseDamage[punchType] ?? T.baseDamage.straight;
-  const raw = base * (0.5 + 0.5 * power) * fatigue * c.M;
-  const damage = Math.min(o.hp, raw);
+  // D12: heavy gloves while hurt; an exhausted Tamsin takes more to the head
+  const exhaustedHead = !body && o.tired === 'exhausted' ? T.exhaustedHeadDamageMult : 1;
+  const formula = base * (0.5 + 0.5 * power) * fatigue * c.M * (hurt ? T.hurtPunchMult : 1) * exhaustedHead;
+  const damage = Math.min(o.hp, body ? formula * T.bodyHpFactor : formula); // a body hit: 50% to HP…
+  const staminaDrain = body ? formula * T.bodyStaminaDrain : 0; // …and 0.7 × the formula from her stamina
   o.hp -= damage;
   addDamage(w, 'player', damage);
+  if (staminaDrain > 0) addOppStamina(w, -staminaDrain);
+  if (body) p.stats.bodyHits = (p.stats.bodyHits ?? 0) + 1;
   p.stats.landed += 1;
   if (c.counter) p.stats.counters += 1;
   if (c.interrupt) p.stats.interrupts += 1;
-  if (c.counter || c.interrupt) noteCounter(w); // D9a: pressure ends
-  w.emit(EVENT.HIT, { by: 'player', hand, punchType, power, damage, counter: c.counter, interrupt: c.interrupt });
+  if (c.counter || c.interrupt) noteCounter(w); // D9a: pressure ends (an uppercut counter too; a split doesn't)
+  w.emit(EVENT.HIT, {
+    by: 'player', hand, punchType, power, damage, counter: c.counter, interrupt: c.interrupt,
+    target, staminaDrain, riposte: !!c.riposte,
+  });
 
   if (o.hp <= EPS) {
     o.hp = 0;
     spend(w, cost);
     knockdown(w, 'opponent');
     return;
+  }
+
+  if (c.split) {
+    p.stats.splits = (p.stats.splits ?? 0) + 1;
+    splitGuard(w, hitTime); // D11: low for 400 ms with 1 free hit, tucked 4 s, both from the backdated hit time
   }
 
   if (c.clean) {
@@ -235,7 +293,7 @@ export function resolvePlayerPunch(w, ev) {
     } else if (c.counter) {
       if (o.state === OPP_STATE.RECOVER && o.offBalance && ai.seq === snap.seq) extendOffBalance(w);
     } else if (c.stagger && o.state === OPP_STATE.CIRCLE && (t >= o.staggerImmuneUntil - EPS || o.offBalance)) {
-      staggerOpponent(w, T.hurtDur, false);
+      staggerOpponent(w, T.hurtDur, false, spendWin);
     }
     if (spendWin !== null) spendFreeHit(w, spendWin); // emits cover when the budget runs out
     // anti-stun-lock: 3 clean hits within 1.5 s → immune to stagger for 1 s
@@ -276,7 +334,8 @@ export function resolveStrike(w) {
   const pressured = !!p.pressured; // D9a
   const breakBelow = pressured ? T.pressureGuardBreakBelow : T.guardBreakBelow;
 
-  if (guarded && anchor && p.stamina < breakBelow) {
+  const guardBroken = guarded && anchor && p.stamina < breakBelow;
+  if (guardBroken) {
     p.guardBrokenUntil = t + T.guardBreakDur;
     p.guard = 'none';
     p.guardHeldSince = -1;
@@ -297,5 +356,7 @@ export function resolveStrike(w) {
     knockdown(w, 'player');
     return true;
   }
+  // D12 player hurt (with features.rise): big / repeated unblocked hits and guard breaks
+  if (w.on ? w.on('rise') : true) noteStrikeOutcome(w, { attack, unblocked: !guarded || guardBroken, guardBroken });
   return false;
 }

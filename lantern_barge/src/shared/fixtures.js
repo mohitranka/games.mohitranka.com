@@ -4,12 +4,14 @@
 // GE: sim.reset() should start from createInitialState() and then apply game tuning (HP, stamina, round length).
 // New fields go into types.js and here the same day, via PD.
 
+import { NO_FEATURES } from './features.js';
+
 /** @typedef {import('./types.js').GameState} GameState */
 /** @typedef {import('./types.js').InputFrame} InputFrame */
 /** @typedef {import('./types.js').HandState} HandState */
 
 function createStats() {
-  return { thrown: 0, landed: 0, blocked: 0, whiffed: 0, counters: 0, interrupts: 0 };
+  return { thrown: 0, landed: 0, blocked: 0, whiffed: 0, counters: 0, interrupts: 0, splits: 0, parries: 0, bodyHits: 0 }; // splits: D11; parries, bodyHits: D12
 }
 
 /** @returns {import('./types.js').Player} */
@@ -22,6 +24,7 @@ export function createPlayer() {
     fatigued: false,
     lowHp: false,
     pressured: false, // D9a: the turtle-pressure rules are on
+    hurtUntil: -1, // D12: sim s; hurt (punches ×0.7, +3 stamina, no parry/dodge) while time < hurtUntil
     gassedUntil: -1,
     guard: 'none',
     guardBrokenUntil: -1,
@@ -54,6 +57,11 @@ export function createOpponent() {
     covering: false, // D9: free hits used up, guard high for the rest of the window
     freeHits: 0, // D9: clean hits left in the current open window
     sequence: { kind: 'single', combo: null }, // D9 (bots must not read this)
+    splitUntil: -1, // D11: sim s; her guard is split (low, 1 free hit) while time < splitUntil
+    tuckUntil: -1, // D11: sim s; tucked (uppercuts into her high guard are blocked) while time < tuckUntil
+    stamina: 100, // D12: Tamsin's stamina (GE's tuning owns the numbers)
+    maxStamina: 100,
+    tired: 'fresh', // D12: 'fresh' | 'tired' (< 50) | 'exhausted' (< 20)
     knockdowns: 0,
     down: null,
     points: 0,
@@ -136,5 +144,6 @@ export function createInputFrame(t = 0, source = 'none') {
     calibration: createCalibrationStatus(),
     spot: { kGuardDrift: null, hint: null },
     gesture: { kind: null, progress: 0, fired: false, available: [] }, // D10
+    features: NO_FEATURES, // main.js replaces it with the run's flags
   };
 }

@@ -4,7 +4,8 @@
 import { EVENT, PHASE, OPP_STATE } from '../shared/constants.js';
 import { createPlayer, createOpponent } from '../shared/fixtures.js';
 import { EPS } from './stamina.js';
-import { toCircle, updateOpponent } from './opponent-ai.js';
+import { toCircle, updateOpponent, clearSplit, addOppStamina } from './opponent-ai.js';
+import { initRise, updateRise, riseDecision, riseHp } from './defence.js';
 import { restartPressure, updatePressure } from './pressure.js';
 
 /**
@@ -30,12 +31,17 @@ export function freshPlayer(T) {
   p.maxHp = p.hp = T.hpMax.player;
   p.maxStamina = p.stamina = T.staminaMax;
   p.pressured = false; // D9a
+  p.stats.splits = 0; // D11
   return p;
 }
 
 export function freshOpponent(T) {
   const o = createOpponent();
   o.maxHp = o.hp = T.hpMax.opponent;
+  o.maxStamina = o.stamina = T.oppStaminaMax; // D12
+  o.tired = 'fresh';
+  o.splitUntil = -1; // D11
+  o.tuckUntil = -1;
   return o;
 }
 
@@ -93,6 +99,7 @@ export function enterFight(w) {
   st.opponent.down = null;
   st.opponent.mitts = false;
   w.ctx.ai.cleanHits.length = 0;
+  clearSplit(w);
   toCircle(w, { resetCooldown: true });
   if (r.countdown <= 0) startClock(w);
 }
@@ -142,6 +149,8 @@ function finishRest(w) {
   p.stamina = p.maxStamina;
   p.gassedUntil = -1;
   p.guardBrokenUntil = -1;
+  p.hurtUntil = -1;
+  addOppStamina(w, T.oppRestStamina); // D12: +30 between rounds (no-op without features.body)
   st.round.n = Math.min(st.round.of, st.round.n + 1);
   enterFight(w);
 }
@@ -196,7 +205,9 @@ export function knockdown(w, who) {
   f.down = { since: t, count: 0 };
   st.round.clockRunning = false;
   w.emit(EVENT.KNOCKDOWN, { who, count: f.knockdowns });
+  clearSplit(w);
   toCircle(w); // cancels any attack in progress
+  if (who === 'player' && playerRises(w)) initRise(w, f.knockdowns); // D12: hold a guard to rise
   if (who === 'opponent') {
     const o = st.opponent;
     o.state = OPP_STATE.KNOCKDOWN;
@@ -212,7 +223,43 @@ function countTarget(w, f) {
   return f.knockdowns >= 2 ? w.T.koCount : w.T.getupCount;
 }
 
+/** D12 (features.rise): the player rises by holding a guard; 3rd knockdown = KO. Tamsin keeps the auto get-up. */
+function playerRises(w) {
+  return w.on ? w.on('rise') : true;
+}
+
+function updatePlayerRise(w) {
+  const st = w.state;
+  const T = w.T;
+  const f = st.player;
+  updateRise(w, w.frame ?? {});
+  const n = Math.floor((st.time - f.down.since) / T.countInterval + EPS);
+  while (f.down && f.down.count < Math.min(n, T.koCount)) {
+    f.down.count += 1;
+    w.emit(EVENT.COUNT, { who: 'player', n: f.down.count });
+    const d = riseDecision(w, f.down.count);
+    if (d === 'ko') {
+      endMatch(w, 'opponent', 'ko');
+      return;
+    }
+    if (d === 'rise') {
+      f.down = null;
+      f.hp = riseHp(w);
+      w.ctx.rise = null;
+      w.emit(EVENT.GETUP, { who: 'player', hp: f.hp });
+      st.round.clockRunning = true;
+      restartPressure(w);
+      toCircle(w, { resetCooldown: true });
+      return;
+    }
+  }
+}
+
 function updateKnockdown(w, who) {
+  if (who === 'player' && playerRises(w)) {
+    updatePlayerRise(w);
+    return;
+  }
   const st = w.state;
   const T = w.T;
   const f = st[who];
@@ -240,6 +287,7 @@ function updateKnockdown(w, who) {
     o.guard = 'none';
     o.covering = false;
     o.freeHits = 0;
+    addOppStamina(w, Math.max(0, T.oppGetupStaminaMin - o.stamina)); // D12: max(current, 60)
   } else {
     toCircle(w, { resetCooldown: true });
   }

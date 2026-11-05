@@ -27,9 +27,10 @@ export {};
  */
 
 /**
- * RESERVED (D6): always {present:false}.
+ * D13 (M7-in spike, ?next=1 only): present + raw face box; dx/dy/w0/dodge arrive with M7. Otherwise {present:false}.
  * @typedef {Object} HeadState
  * @property {boolean} present
+ * @property {{x:number, y:number, w:number, h:number, score:number}} [raw]   face-box centre and size (normalized; x mirrored like the hands)
  */
 
 /**
@@ -55,6 +56,8 @@ export {};
  * @property {number}  inferMs
  * @property {number}  pipelineMs   result arrival − capture (EMA)
  * @property {'GPU'|'CPU'|null} delegate
+ * @property {{ok:boolean|null, error:string|null, ms:number, every:number, runs:number, found:number}} [face]
+ *           D13 spike (?next=1): face detector status and cost
  */
 
 /**
@@ -79,6 +82,7 @@ export {};
  * @property {CalibrationStatus} calibration
  * @property {{kGuardDrift:number|null, hint:'return_to_spot'|null}} spot   always {null,null} for keyboard
  * @property {GestureState} gesture        D10 camera gestures; always idle for keyboard
+ * @property {import('./features.js').Features} features   M5+ flags (?next=1), stamped by main.js on every frame
  */
 
 /**
@@ -98,6 +102,7 @@ export {};
  * @property {number} id                    unique per source session; never re-used
  * @property {'left'|'right'} hand
  * @property {'straight'|'hook'|'uppercut'} punchType
+ * @property {'head'|'body'} target         D12: camera = palm ≥ 0.12 fh below guard at commit (straight/hook); keyboard = Shift
  * @property {number} power                 0..1, computed by input
  * @property {{x:number}} aim               mirrored screen x at commit
  * @property {number} tOnset                capture time of the onset run's first sample (true time, NO backdate)
@@ -110,7 +115,13 @@ export {};
  * @typedef {{type:'guard', level:'none'|'full', t:number}} GuardEvent
  */
 
-/** @typedef {PunchEvent|GuardEvent} InputEvent */
+/**
+ * D12 parry: a closed fist swiping outward from the guard zone (camera) or A / ; (keyboard). The game decides
+ * whether a parryable strike is pending (window, side, attack) and emits the game event parry{result}.
+ * @typedef {{type:'parry', id:number, hand:'left'|'right', tOnset:number, tCommit:number}} ParryInputEvent
+ */
+
+/** @typedef {PunchEvent|GuardEvent|ParryInputEvent} InputEvent */
 
 /**
  * @typedef {Object} HandProfile
@@ -145,11 +156,16 @@ export {};
  * @typedef {Object} FighterStats
  * @property {number} thrown @property {number} landed @property {number} blocked
  * @property {number} whiffed @property {number} counters @property {number} interrupts
+ * @property {number} splits    D11: her guard split by an uppercut
+ * @property {number} parries   D12: successful parries
+ * @property {number} bodyHits  D12: body shots that landed
  */
 
 /**
  * Knockdown sub-state: count = the current count number (0 right after the knockdown, then 1..8 or 1..10).
- * @typedef {{since:number, count:number}} DownState
+ * D12 (player only, hold-guard rise): holdProgress / holdNeeded in seconds (the ring shows the ratio), deadlineCount =
+ * the count the hold must finish by (9). Absent = automatic get-up (Tamsin, or without ?next=1).
+ * @typedef {{since:number, count:number, holdProgress?:number, holdNeeded?:number, deadlineCount?:number}} DownState
  */
 
 /**
@@ -161,11 +177,12 @@ export {};
  * @property {boolean} fatigued        display flag: stamina below the GDD fatigue line
  * @property {boolean} lowHp           display flag
  * @property {boolean} pressured       D9a: pressure is on (no counter for 8 s while guarding ≥ 70 %); see game-design §5/§6
+ * @property {number}  hurtUntil       D12: sim s; hurt while time < hurtUntil (punches ×0.7, +3 stamina, no parry/dodge)
  * @property {number}  gassedUntil     sim s; gassed while time < gassedUntil (-1 = never)
  * @property {'none'|'full'} guard     EFFECTIVE guard: guardBroken ? 'none' : frame.guard.level (D3)
  * @property {number}  guardBrokenUntil  sim s (-1 = never)
  * @property {number}  guardHeldSince  sim s or -1 (anti-turtle; also for the view)
- * @property {number}  knockdowns      per MATCH
+ * @property {number}  knockdowns      per MATCH (D12: the player's 3rd is a KO; a failed rise is a KO)
  * @property {DownState|null} down
  * @property {number}  points          100 × damage dealt / opponent.maxHp, overkill excluded, 0.1 steps (D9)
  * @property {FighterStats} stats
@@ -192,6 +209,11 @@ export {};
  * @property {number}  freeHits                    D9: clean hits left in the current open window
  * @property {{kind:'single'|'feint'|'punish'|'combo', combo:null|'snap_drop'|'bridge_snap'|'double_bridge'}} sequence
  *           D9: the sequence she is in (bots must NOT read it)
+ * @property {number}  splitUntil                  D11: sim s; guard split (low, 1 free hit) while time < splitUntil
+ * @property {number}  tuckUntil                   D11: sim s; tucked while time < tuckUntil (cover-up also counts)
+ * @property {number}  stamina                     D12: Tamsin's stamina (body shots drain it)
+ * @property {number}  maxStamina                  D12
+ * @property {'fresh'|'tired'|'exhausted'} tired   D12: < 50 tired, < 20 exhausted
  * @property {number}  knockdowns                  per MATCH
  * @property {DownState|null} down
  * @property {number}  points                      100 × damage dealt / player.maxHp (D9)
@@ -235,9 +257,10 @@ export {};
 // | round_start    | n                                                                | pre-round countdown ends, clock starts
 // | round_end      | n                                                                | the round clock reaches 0
 // | match_end      | winner, method, points:{player, opponent}                        | match decided (points in %, D9)
-// | punch_thrown   | id, hand, punchType, power, inferred                             | player punch accepted, before resolution
+// | punch_thrown   | id, hand, punchType, power, inferred, target                     | player punch accepted, before resolution
 // | punch_rejected | id, hand, reason:'gassed'                                        | punch received while gassed (no stamina cost)
-// | hit            | by:'player', hand, punchType, power, damage, counter, interrupt  | a player punch lands on Tamsin
+// | hit            | by:'player', hand, punchType, power, damage, counter, interrupt, | a player punch lands on Tamsin (D12: target,
+// |                | target, staminaDrain, riposte                                    | her stamina drained, riposte after a parry)
 // | player_hit     | attack, side, damage, shakeTier                                  | Tamsin's strike lands on the player; shakeTier 1–3
 // | blocked        | by, hand, punchType|null, attack|null, staminaCost               | by:'player' → her guard blocked punchType;
 // |                |                                                                  | by:'opponent' → player blocked attack (cost paid by player)
@@ -253,8 +276,13 @@ export {};
 // | count          | who, n                                                           | each count tick during a knockdown
 // | getup          | who, hp                                                          | auto get-up at count 8
 // | feint_cancel   | attack, side                                                     | a feinted wind-up is cancelled (D9)
-// | cover          | reason:'recover'|'hurt'|'circle'|'feint'                         | she covers up: free hits used up, or after a feint
+// | cover          | reason:'recover'|'hurt'|'circle'|'feint'|'split'                         | she covers up: free hits used up, or after a feint
 // | pressure       | on                                                               | player.pressured changes (D9a); TA: bark + jeer on
+// | guard_split    | until                                                            | an uppercut split her high guard (D11); low until `until`
+// | parry          | result:'success'|'whiff', attack, hand                           | D12: the player's parry (hand = player's glove;
+// |                |                                                                  | attack = the parried attack, null on a whiff)
+// | opponent_tired | level:'fresh'|'tired'|'exhausted'                                | D12: her tiredness level changes
+// | player_hurt    | until, cause:'big_hit'|'guard_break'|'two_hits'                  | D12: the player is hurt (refreshes, never stacks)
 
 /** @typedef {'player'|'opponent'} Who */
 /** @typedef {'left'|'right'} Hand */
@@ -264,9 +292,9 @@ export {};
 /** @typedef {{type:'round_start', t:number, n:number}} RoundStartEvent */
 /** @typedef {{type:'round_end', t:number, n:number}} RoundEndEvent */
 /** @typedef {{type:'match_end', t:number, winner:Who, method:'ko'|'points', points:{player:number, opponent:number}}} MatchEndEvent */
-/** @typedef {{type:'punch_thrown', t:number, id:number, hand:Hand, punchType:string, power:number, inferred:boolean}} PunchThrownEvent */
+/** @typedef {{type:'punch_thrown', t:number, id:number, hand:Hand, punchType:string, power:number, inferred:boolean, target?:'head'|'body'}} PunchThrownEvent */
 /** @typedef {{type:'punch_rejected', t:number, id:number, hand:Hand, reason:'gassed'}} PunchRejectedEvent */
-/** @typedef {{type:'hit', t:number, by:'player', hand:Hand, punchType:string, power:number, damage:number, counter:boolean, interrupt:boolean}} HitEvent */
+/** @typedef {{type:'hit', t:number, by:'player', hand:Hand, punchType:string, power:number, damage:number, counter:boolean, interrupt:boolean, target?:'head'|'body', staminaDrain?:number, riposte?:boolean}} HitEvent */
 /** @typedef {{type:'player_hit', t:number, attack:Attack, side:Hand, damage:number, shakeTier:1|2|3}} PlayerHitEvent */
 /** @typedef {{type:'blocked', t:number, by:Who, hand:Hand, punchType:string|null, attack:Attack|null, staminaCost:number}} BlockedEvent */
 /** @typedef {{type:'whiff', t:number, by:'player', id:number, hand:Hand, punchType:string}} WhiffEvent */
@@ -281,13 +309,17 @@ export {};
 /** @typedef {{type:'count', t:number, who:Who, n:number}} CountEvent */
 /** @typedef {{type:'getup', t:number, who:Who, hp:number}} GetupEvent */
 /** @typedef {{type:'feint_cancel', t:number, attack:Attack, side:Hand}} FeintCancelEvent */
-/** @typedef {{type:'cover', t:number, reason:'recover'|'hurt'|'circle'|'feint'}} CoverEvent */
+/** @typedef {{type:'cover', t:number, reason:'recover'|'hurt'|'circle'|'feint'|'split'}} CoverEvent */
 /** @typedef {{type:'pressure', t:number, on:boolean}} PressureEvent */
+/** @typedef {{type:'guard_split', t:number, until:number}} GuardSplitEvent */
+/** @typedef {{type:'parry', t:number, result:'success'|'whiff', attack:Attack|null, hand:Hand}} ParryEvent */
+/** @typedef {{type:'opponent_tired', t:number, level:'fresh'|'tired'|'exhausted'}} OpponentTiredEvent */
+/** @typedef {{type:'player_hurt', t:number, until:number, cause:'big_hit'|'guard_break'|'two_hits'}} PlayerHurtEvent */
 
 /**
  * @typedef {PhaseEvent|RoundStartEvent|RoundEndEvent|MatchEndEvent|PunchThrownEvent|PunchRejectedEvent|
  *   HitEvent|PlayerHitEvent|BlockedEvent|WhiffEvent|GuardBrokenEvent|TelegraphEvent|StrikeEvent|
- *   StaggerEvent|OpeningEvent|GassedEvent|KnockdownEvent|CountEvent|GetupEvent|FeintCancelEvent|CoverEvent|PressureEvent} GameEvent
+ *   StaggerEvent|OpeningEvent|GassedEvent|KnockdownEvent|CountEvent|GetupEvent|FeintCancelEvent|CoverEvent|PressureEvent|GuardSplitEvent|ParryEvent|OpponentTiredEvent|PlayerHurtEvent} GameEvent
  */
 
 // ───────────────────────────────────────────── APIs (§3.7–3.9)

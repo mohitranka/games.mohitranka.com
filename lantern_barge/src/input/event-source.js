@@ -24,7 +24,12 @@ export function createEventSource({ clock, tuning = defaultTuning, profile = DEF
 
   // keyboard state
   let keyGuard = false;
+  // P1b: timestamped histories so the keyboard guard can be read keyboardGuardDelayMs in the past
+  const spaceHist = []; // {t, down}
+  const punchHist = { left: [], right: [] }; // {t, until}
   const lastPunchAt = { left: -Infinity, right: -Infinity };
+  const lastParryAt = { left: -Infinity, right: -Infinity }; // D12
+  const lockoutUntil = { left: -Infinity, right: -Infinity }; // guard lockout: 250 ms, 350 ms after an uppercut (D11)
   const anim = { left: null, right: null }; // {type, t0}
 
   // injection state
@@ -53,12 +58,30 @@ export function createEventSource({ clock, tuning = defaultTuning, profile = DEF
   }
 
   function lockedOut(hand, t) {
-    return t - lastPunchAt[hand] < tuning.guardLockoutMs / 1000;
+    return t < lockoutUntil[hand] - 1e-9;
   }
 
+  const HIST_S = 5;
+  const trim = (list, t) => {
+    while (list.length > 1 && list[1].t < t - HIST_S) list.shift();
+  };
+
+  /** Keyboard guard at time t: Space held and neither hand locked out. With guard parity (P1a/P1b) both come from
+   *  the histories read keyboardGuardDelayMs in the past, so a press, a release and a post-punch return all land late. */
   function keyboardGuardLevel(t) {
-    if (!keyGuard) return 'none';
-    return HANDS.some((h) => lockedOut(h, t)) ? 'none' : 'full';
+    if (!tuning.guardParity) {
+      if (!keyGuard) return 'none';
+      return HANDS.some((h) => lockedOut(h, t)) ? 'none' : 'full';
+    }
+    const at = t - tuning.keyboardGuardDelayMs / 1000;
+    let down = false;
+    for (const e of spaceHist) {
+      if (e.t <= at + 1e-9) down = e.down;
+      else break;
+    }
+    if (!down) return 'none';
+    const locked = HANDS.some((h) => punchHist[h].some((p) => p.t <= at + 1e-9 && at < p.until - 1e-9));
+    return locked ? 'none' : 'full';
   }
 
   // Synthesized gloves for keyboard play, so the view behaves the same as with a camera.
@@ -80,6 +103,13 @@ export function createEventSource({ clock, tuning = defaultTuning, profile = DEF
         if (a.type === 'hook') {
           hs.x += (h === 'left' ? 1 : -1) * 0.2 * s; // toward the midline
           ext = 0.3 * s;
+        } else if (a.type === 'uppercut') {
+          // D11: a short dip (~60 ms), then an up-and-forward arc to chin height, then back
+          const u = (t - a.t0) / dur;
+          const dip = u < 0.24 ? u / 0.24 : 1;
+          const rise = u < 0.24 ? 0 : Math.sin((Math.PI * (u - 0.24)) / 0.76);
+          hs.y += 0.05 * dip * (1 - rise) - 0.12 * rise;
+          ext = 0.5 * rise;
         } else {
           ext = s;
         }
@@ -114,6 +144,7 @@ export function createEventSource({ clock, tuning = defaultTuning, profile = DEF
     async start() {},
     stop() {
       kbQueue.length = 0;
+      if (keyGuard) spaceHist.push({ t: nowS(), down: false });
       keyGuard = false;
     },
 
@@ -138,19 +169,30 @@ export function createEventSource({ clock, tuning = defaultTuning, profile = DEF
     },
     detachKeyboard() {
       kind = 'none';
+      if (keyGuard) spaceHist.push({ t: nowS(), down: false });
       keyGuard = false;
     },
     /** @returns {boolean} false if ignored (refractory) */
-    keyPunch(hand, punchType) {
+    keyPunch(hand, punchType, target = 'head') {
       const t = nowS();
       if (t - lastPunchAt[hand] < tuning.refractoryMs / 1000) return false;
       lastPunchAt[hand] = t;
+      if (tuning.guardParity) {
+        // P1a/P1b: back at onset (keydown) + guardReturnMs, or + uppercutGuardReturnMs
+        const back = punchType === 'uppercut' ? tuning.uppercutGuardReturnMs : tuning.guardReturnMs;
+        lockoutUntil[hand] = t + back / 1000;
+        punchHist[hand].push({ t, until: lockoutUntil[hand] });
+        trim(punchHist[hand], t);
+      } else {
+        lockoutUntil[hand] = t + (punchType === 'uppercut' ? tuning.uppercutGuardLockoutMs : tuning.guardLockoutMs) / 1000;
+      }
       anim[hand] = { type: punchType, t0: t };
       kbQueue.push({
         type: 'punch',
         id: nextId++,
         hand,
         punchType,
+        target, // D12: Shift + F/J/D/K → 'body'
         power: tuning.keyboardPower,
         aim: { x: profile.hands[hand].center.x },
         tOnset: t,
@@ -159,8 +201,22 @@ export function createEventSource({ clock, tuning = defaultTuning, profile = DEF
       });
       return true;
     },
+    /** D12: A / ; tap → a parry input event at keydown time. Same 400 ms refractory as the camera swipe. */
+    keyParry(hand) {
+      const t = nowS();
+      if (t - lastParryAt[hand] < tuning.parryRefractoryMs / 1000) return false;
+      lastParryAt[hand] = t;
+      kbQueue.push({ type: 'parry', id: nextId++, hand, tOnset: t, tCommit: t });
+      return true;
+    },
     setKeyGuard(down) {
-      keyGuard = !!down;
+      down = !!down;
+      if (down !== keyGuard) {
+        const t = nowS();
+        spaceHist.push({ t, down });
+        trim(spaceHist, t);
+      }
+      keyGuard = down;
     },
 
     // ── injection (test hook; works on top of any source)
@@ -172,12 +228,20 @@ export function createEventSource({ clock, tuning = defaultTuning, profile = DEF
         id: e.id ?? nextId++,
         hand: e.hand ?? 'left',
         punchType: e.punchType ?? 'straight',
+        target: e.target ?? 'head', // D12
         power: e.power ?? 0.8,
         aim: e.aim ?? { x: e.aimX ?? 0.5 },
         tOnset: e.tOnset ?? tCommit,
         tCommit,
         inferred: e.inferred ?? false,
       };
+      injQueue.push(ev);
+      return ev;
+    },
+    /** D12 test injection: a parry input event (lands on the next sample(), like pushPunch). */
+    pushParry(e = {}) {
+      const tCommit = e.tCommit ?? nowS() - latencyMs / 1000;
+      const ev = { type: 'parry', id: e.id ?? nextId++, hand: e.hand ?? 'left', tOnset: e.tOnset ?? tCommit, tCommit };
       injQueue.push(ev);
       return ev;
     },

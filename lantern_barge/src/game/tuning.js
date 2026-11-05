@@ -22,17 +22,20 @@ export const tuning = {
   opponentGetupDur: 1.0, // her getup animation after the count, before she circles again (GE pick)
 
   // ── player damage (GDD §5, §6)
-  baseDamage: { straight: 7, hook: 10, uppercut: 7 },
+  baseDamage: { straight: 7, hook: 10, uppercut: 9 }, // D11: uppercut 9
   fatigueMult: 0.5,
   highGuardHookMult: 0.5, // D9: her high guard (incl. cover-up) vs a hook (not clean); straights are blocked (M 0)
   counterMult: 1.25, // D9
   interruptMult: 2.0,
   aimZone: [0.2, 0.8], // straights in range; hooks always reach
+  aimZoneUppercut: [0.25, 0.75], // D11: an inside punch with a shorter reach
   whiffExtraStamina: 4,
 
   // ── stamina (GDD §5)
   punchCostBase: 5,
   punchCostPower: 7,
+  uppercutCostBase: 7, // D11: an uppercut costs 7 + 7p (it uses the legs)
+  uppercutExtraStamina: 6, // D11: an uppercut that whiffs, or is blocked by her tuck / cover-up
   regenRate: 14, // per s
   regenDelay: 0.7, // after the last punch or block
   regenGuardFactor: 0.5,
@@ -73,7 +76,7 @@ export const tuning = {
   ropeSnapInterval: 0.3, // contact to contact
   strikeHold: 0.15, // 'attack' stage length after contact (GE pick; must cover impactDelay)
   interruptWindowOpen: 0.6, // s before contact; a real Anchor Drop's guard drops to 'none' here (D9)
-  interruptPowerMin: 0.5,
+  interruptPowerMin: 0, // P1b: no power floor; any straight in the window interrupts, power only scales damage
   interruptStagger: 1.0,
   offBalanceExtend: 0.15,
   offBalanceExtendMax: 0.45,
@@ -97,6 +100,15 @@ export const tuning = {
   freeHits: { rope_snap: 1, swing_bridge: 1, anchor_drop: 2, interruptHurt: 2, circleLow: 1 },
   comboRecoverExtra: 0.3, // Recover after a combo = last attack's Recover + this
   comboExtraFreeHits: 1,
+
+  // ── uppercut: guard split and tuck (D11, GDD §6)
+  splitMult: 0.3, // an uppercut into her untucked high guard (not clean)
+  splitWindow: 0.4, // her guard drops to low for this long
+  splitFreeHits: 1,
+  tuckDur: 4, // from the split; uppercuts into her high guard are blocked meanwhile (cover-up always counts)
+  uppercutLowMult: 0.8, // low guard, Hurt, split window
+  uppercutOpenMult: 1.0, // her strike in progress / open guard (no interrupt)
+  uppercutCounterMult: 1.0, // Recover counter (straights and hooks get counterMult)
 
   // ── sequences (D9, GDD §6 "Choosing a sequence"): [single, feint, combo] per round
   sequenceKind: [
@@ -128,4 +140,51 @@ export const tuning = {
   pressureWindow: 8, // s without a counter / interrupt, and the guard-share window
   pressureGuardShare: 0.7, // share of live ticks in full guard over the window
   pressureAnchorWeight: 45,
+
+  // ── D12 body shots (GDD §13.1; behind features.body)
+  bodyHpFactor: 0.5, // a body hit removes 50% of the damage formula from her HP…
+  bodyStaminaDrain: 0.7, // …and drains 0.7 × the full formula from her stamina
+  bodyHighGuardMult: 0.5, // her high guard / tuck (not clean; the drain still applies)
+  bodyCoverMult: 0.5, // cover-up (not clean)
+  bodyBlockedExtraStamina: 4, // her low guard or the split window blocks a body shot: +4 for the player
+
+  // ── D12 Tamsin's stamina and tiredness (GDD §13.1; behind features.body)
+  oppStaminaMax: 100,
+  oppStaminaRegen: 3, // per s, only while she circles
+  oppAttackCost: { rope_snap: 2, swing_bridge: 4, anchor_drop: 8, feint: 1 }, // per jab / strike / feint
+  oppRestStamina: 30, // between rounds
+  oppGetupStaminaMin: 60, // on her get-up: max(current, this)
+  tiredBelow: 50,
+  exhaustedBelow: 20,
+  tiredWindupMult: 1.1,
+  exhaustedWindupMult: 1.2,
+  tiredCooldownMult: 1.2,
+  exhaustedCooldownMult: 1.4,
+  tiredFeintMult: 0.5, // exhausted: no feints or combos
+  exhaustedFreeHits: 1, // +1 in every Recover
+  exhaustedHeadDamageMult: 1.2,
+
+  // ── D12 parry (GDD §13.2; behind features.parry)
+  parryWindowOpen: 0.35, // onset window [contact − 0.35, interrupt-close formula]
+  parryRecoverDur: 0.6, // QA balance-next (was 0.5)
+  parryFreeHits: 1,
+  riposteMult: 1.0, // the parry Recover's free hit (QA balance-next; was 1.5; not stacked with counterMult)
+  parryWhiffLock: 0.3, // a missed parry: that glove is out of guard (guard 'none') this long
+
+  // ── D12 player get-up (GDD §13.3; behind features.rise)
+  riseHold: [2.0, 3.5], // continuous full guard needed, 1st / 2nd knockdown
+  riseDeadlineCount: 9, // the hold must be complete by this count (+ latencyBudget arrival grace)
+  riseHp: [50, 30],
+  riseBreakMax: 0.15, // a guard break longer than this resets the hold
+  riseStartCount: 1, // the hold may start at this count
+  playerKoKnockdown: 3, // the player's 3rd knockdown is a KO
+
+  // ── D12 player hurt (GDD §13.4; with features.rise)
+  playerHurtDur: 1.0,
+  playerHurtLongDur: 1.5, // after an Anchor Drop or a guard break
+  playerHurtBigHit: 12, // one unblocked strike of at least this
+  playerHurtTwoHitsWindow: 1.5,
+  hurtPunchMult: 0.7,
+  hurtPunchExtraStamina: 3,
+  hurtCooldownMult: 0.6, // her next cooldown while she presses
 };

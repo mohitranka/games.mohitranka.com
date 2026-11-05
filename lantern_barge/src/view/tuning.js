@@ -74,6 +74,7 @@ export const tuning = {
     fatigueDamp: 0.6, // extension multiplier while fatigued
     gassedDamp: 0.3,
     punchAnimS: 0.24, // event-driven punch (injected/test punches with no hand motion)
+    uppercutS: 0.25, // D11: dip + arc
     blockJoltS: 0.18,
     brokenS: 0.6,
   },

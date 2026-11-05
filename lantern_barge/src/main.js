@@ -11,6 +11,7 @@ import { tuning as inputTuning } from './input/tuning.js';
 import { createHandSource } from './input/hand-source.js';
 import { parseJsonl } from './input/replay.js';
 import { createStubSim, createNullView, createNullAudio } from './dev/stubs.js';
+import { createFeatures, createFeaturesFrom } from './shared/features.js';
 import { installTestHook } from './test-hook.js';
 
 const params = new URLSearchParams(location.search);
@@ -23,6 +24,11 @@ if (STUBS.has('view')) STUBS.add('audio');
 // Stub sim autoplay: on for ?stub=game outside tests; ?stubAutoplay=1|0 overrides (dev-only, stub-only).
 const STUB_AUTOPLAY = params.has('stubAutoplay') ? params.get('stubAutoplay') === '1' : !TEST;
 const ALLOW_DEBUG = TEST || DEBUG;
+// M5+ live-deploy flag: everything new ships behind ?next=1. One frozen object, handed to input, sim and view.
+// QA balance runs (?test=1 or ?debug=1 only): ?features=uppercut,rise sets exactly those keys; it overrides ?next=1.
+const FEATURES = ALLOW_DEBUG && params.has('features')
+  ? createFeaturesFrom(params.get('features').split(','))
+  : createFeatures(params.get('next') === '1');
 const MAX_CATCHUP = 0.25; // s
 const EVENT_LOG_CAP = 10000;
 const LOAD_TIMEOUT_MS = 15000; // BUG-008: a layer (or three.js from the CDN) that hangs fails loudly instead
@@ -32,6 +38,10 @@ const $ = (id) => document.getElementById(id);
 // ───────────────────────────────────────────── core state
 const clock = createClock({ manual: TEST });
 const tuning = { input: inputTuning, game: {}, view: {} };
+inputTuning.enableUppercut = FEATURES.uppercut; // D11 camera uppercut only with ?next=1
+inputTuning.guardParity = FEATURES.uppercut; // P1a/P1b guard return + keyboard guard delay ship with M5 (?next=1)
+inputTuning.enableBody = FEATURES.body; // D12 camera body shots (palm height at commit)
+inputTuning.enableParry = FEATURES.parry; // D12 camera parry swipe
 const layers = { game: 'stub', view: 'stub', audio: 'stub' };
 const events = createEventSource({ clock, tuning: inputTuning });
 /** @type {import('./shared/types.js').InputSource & Record<string, any>} */
@@ -61,6 +71,7 @@ function tick() {
   const t0 = performance.now();
   source.setGestureMode?.(gestureModeFor(sim.state, lastFrame));
   const frame = events.decorate(source.sample(simTime + SIM_DT));
+  frame.features = FEATURES;
   lastFrame = frame;
   const out = sim.step(frame, SIM_DT) ?? [];
   simTime = typeof sim.state.time === 'number' ? sim.state.time : simTime + SIM_DT;
@@ -82,6 +93,7 @@ function tick() {
 function draw(alpha) {
   const t0 = performance.now();
   const view = events.decorate(source.peek(clock.now()), { drain: false });
+  view.features = FEATURES;
   renderer.update(sim.state, pending.splice(0), view, alpha);
   overlay?.draw(view, sim.state);
   perf.renderMs += 0.1 * (performance.now() - t0 - perf.renderMs);
@@ -210,22 +222,28 @@ function routeGesture(kind, st) {
 
 function onMenuKey(code) {
   if (!sim) return;
-  const phase = sim.state.phase;
+  const st = sim.state;
+  const phase = st.phase;
+  // with the slip feature (?next=1) P is "slip right" in FIGHT and Esc pauses; while paused, Esc or P resumes
+  const slipKeys = FEATURES.slip && phase === PHASE.FIGHT;
   if (code === 'Enter') {
     if (phase === PHASE.BOOT) startKeyboard();
     else if (phase === PHASE.MATCH_END) command({ type: COMMAND.RESTART });
     else if (phase === PHASE.PRACTICE) command({ type: COMMAND.SKIP_PRACTICE });
   } else if (code === 'KeyP') {
-    if (phase !== PHASE.BOOT) command({ type: sim.state.paused ? COMMAND.RESUME : COMMAND.PAUSE });
+    if (phase === PHASE.BOOT) return;
+    if (slipKeys && !st.paused) return; // reserved for slip right (D13)
+    command({ type: st.paused ? COMMAND.RESUME : COMMAND.PAUSE });
   } else if (code === 'Escape') {
     if (phase === PHASE.CALIBRATION) command({ type: COMMAND.CANCEL });
+    else if (slipKeys) command({ type: st.paused ? COMMAND.RESUME : COMMAND.PAUSE });
   }
 }
 
 function useKeyboardPunches() {
   if (events.kind === 'keyboard') return;
   detachKeyboard();
-  detachKeyboard = attachKeyboard(events, { onMenuKey, punches: true });
+  detachKeyboard = attachKeyboard(events, { onMenuKey, punches: true, features: FEATURES });
 }
 
 // Source selection is final (BUG-002): every choice takes a new token; a camera start that resolves after the
@@ -276,7 +294,7 @@ async function startCamera() {
   audio.unlock().catch(() => {});
   bootMessage('');
   setBootStatus('Starting the camera and hand tracking…');
-  const hs = createHandSource({ backend: 'camera', clock, tuning: inputTuning, video: $('cam'), prefer: PREFER });
+  const hs = createHandSource({ backend: 'camera', clock, tuning: inputTuning, video: $('cam'), prefer: PREFER, face: FEATURES.slip });
   pendingCamera = hs;
   try {
     await hs.start();
@@ -351,7 +369,7 @@ function layerError(what, err) {
 }
 
 async function loadGame(seed) {
-  const opts = { seed, allowDebug: ALLOW_DEBUG };
+  const opts = { seed, allowDebug: ALLOW_DEBUG, features: FEATURES };
   if (STUBS.has('game')) return createStubSim({ ...opts, autoplay: STUB_AUTOPLAY });
   try {
     const [simMod, tunMod] = await withTimeout(
@@ -411,7 +429,7 @@ async function boot() {
   addEventListener('resize', resize);
   resize();
 
-  detachKeyboard = attachKeyboard(events, { onMenuKey, punches: INPUT === 'keyboard' });
+  detachKeyboard = attachKeyboard(events, { onMenuKey, punches: INPUT === 'keyboard', features: FEATURES });
   if (INPUT && INPUT !== 'keyboard' && INPUT !== 'camera') console.warn(`[main] unknown ?input=${INPUT}; ignoring`);
   if (DEBUG) {
     const { createDebugOverlay } = await import('./input/debug-overlay.js');
@@ -485,4 +503,5 @@ installTestHook({
   setTuning,
   getSource: () => source,
   getOverlay: () => overlay,
+  features: FEATURES,
 });

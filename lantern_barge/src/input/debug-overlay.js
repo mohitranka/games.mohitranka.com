@@ -230,7 +230,9 @@ export function createDebugOverlay({ root, getSource, tuning, setTuning }) {
           `  available [${f.gesture?.available?.join(', ') ?? ''}]`,
       ];
       status.textContent = lines.join('\n');
-      log.textContent = punches.map((p) => `${p.tCommit.toFixed(2)} ${p.hand} ${p.punchType} p=${p.power}${p.inferred ? ' (rescue)' : ''} onset→commit ${((p.tCommit - p.tOnset) * 1000).toFixed(0)} ms`).reverse().join('\n');
+      log.textContent = punches.map((p) => (p.type === 'parry'
+        ? `${p.tCommit.toFixed(2)} ${p.hand} PARRY swipe onset→commit ${((p.tCommit - p.tOnset) * 1000).toFixed(0)} ms`
+        : `${p.tCommit.toFixed(2)} ${p.hand} ${p.target === 'body' ? 'BODY ' : ''}${p.punchType} p=${p.power}${p.inferred ? ' (rescue)' : ''} onset→commit ${((p.tCommit - p.tOnset) * 1000).toFixed(0)} ms`)).reverse().join('\n');
       startBtn.disabled = !(source?.kind === 'camera') || !!recorder?.running;
       stopBtn.disabled = !recorder?.running;
       if (recorder?.running) recStatus.textContent = `recording… ${recorder.count} results`;

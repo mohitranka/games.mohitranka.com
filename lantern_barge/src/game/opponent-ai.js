@@ -46,6 +46,10 @@ export function createAIContext(rng, T) {
     circleWin: null, // id of the current low-guard spell's window
     recoverWin: null,
     hurtWin: null,
+    splitWin: null, // D11: the split's 400 ms low-guard window
+    splitStart: -1, // D11: the splitting uppercut's backdated hit time (the split's timeline origin, P1/D4)
+    riposteWin: null, // D12: the parry Recover's window (its free hit is a riposte)
+    pressNext: false, // D12: the player is hurt → her next cooldown ×0.6
   };
 }
 
@@ -90,10 +94,53 @@ function openWindow(w, kind, budget) {
   return id;
 }
 
+export function splitActive(w) {
+  return w.state.time < (w.state.opponent.splitUntil ?? -1) - EPS && w.ctx.ai.splitWin !== null;
+}
+
+export function tucked(w) {
+  return w.state.time < (w.state.opponent.tuckUntil ?? -1) - EPS;
+}
+
+// ───────────────────────────────────────────── D12: her stamina and tiredness (features.body)
+
+const featureOn = (w, f) => (w.on ? w.on(f) : true);
+
+export function tiredLevel(w) {
+  const o = w.state.opponent;
+  if (!featureOn(w, 'body')) return 'fresh';
+  const T = w.T;
+  return o.stamina < T.exhaustedBelow ? 'exhausted' : o.stamina < T.tiredBelow ? 'tired' : 'fresh';
+}
+
+/** Recompute opponent.tired; emits opponent_tired{level} on a change. */
+export function updateTired(w) {
+  const o = w.state.opponent;
+  const level = tiredLevel(w);
+  if (o.tired === level) return;
+  o.tired = level;
+  w.emit(EVENT.OPPONENT_TIRED, { level });
+}
+
+/** Her stamina changes (attack costs, body drain, regen, rest). No-op unless features.body. */
+export function addOppStamina(w, delta) {
+  if (!featureOn(w, 'body')) return;
+  const o = w.state.opponent;
+  o.stamina = Math.min(o.maxStamina, Math.max(0, o.stamina + delta));
+  updateTired(w);
+}
+
+function tiredMult(w, tired, exhausted) {
+  const lvl = w.state.opponent?.tired;
+  return lvl === 'exhausted' ? exhausted : lvl === 'tired' ? tired : 1;
+}
+
 /** The free-hit window her CURRENT state belongs to, or null. */
 export function liveWindow(w) {
   const o = w.state.opponent;
   const ai = w.ctx.ai;
+  if (splitActive(w) && (o.state === OPP_STATE.CIRCLE || o.state === OPP_STATE.TELEGRAPH ||
+      (o.state === OPP_STATE.HURT && ai.hurtWin === ai.splitWin))) return ai.splitWin;
   if (o.state === OPP_STATE.RECOVER) return ai.recoverWin;
   if (o.state === OPP_STATE.HURT) return ai.hurtWin;
   if (o.state === OPP_STATE.CIRCLE && ai.circleGuard === 'low') return ai.circleWin;
@@ -128,9 +175,11 @@ export function syncOpponent(w) {
   if (o.mitts) return; // practice card
   const winId = liveWindow(w);
   const left = winId ? windowLeft(w, winId) : 0;
-  const feintCover = o.state === OPP_STATE.CIRCLE && t < ai.feintCoverUntil - EPS;
+  const split = winId !== null && winId === ai.splitWin;
+  const feintCover = o.state === OPP_STATE.CIRCLE && t < ai.feintCoverUntil - EPS && !split;
   o.freeHits = left;
   o.covering = (winId !== null && left <= 0) || feintCover;
+  ai.windowCover = winId !== null && left <= 0; // cover-up from spent free hits (counts as tucked, D11)
   let natural;
   switch (o.state) {
     case OPP_STATE.CIRCLE: natural = ai.circleGuard; break;
@@ -141,7 +190,49 @@ export function syncOpponent(w) {
       break;
     default: natural = 'none'; // attack, recover, knockdown, getup
   }
+  // D11: a split drops a high guard to low for its window (an open Anchor Drop window stays open)
+  if (split && natural === 'high') natural = 'low';
   o.guard = o.covering ? 'high' : natural;
+}
+
+/**
+ * D11: an uppercut split her untucked high guard: low for splitWindow with splitFreeHits, tucked for tuckDur.
+ * Both run from the uppercut's BACKDATED hit time (D4/P1): latency must not shorten the window a camera player
+ * gets. combat.js overlays the split onto snapshots from splitStart on, so a follow-up backdated before the
+ * uppercut reached the sim still meets the split guard. Emits guard_split{until}.
+ */
+export function splitGuard(w, hitTime = w.state.time) {
+  const T = w.T;
+  const o = w.state.opponent;
+  const ai = w.ctx.ai;
+  const start = Math.min(hitTime, w.state.time);
+  ai.splitStart = start;
+  o.splitUntil = start + T.splitWindow;
+  o.tuckUntil = start + T.tuckDur;
+  ai.splitWin = openWindow(w, 'split', T.splitFreeHits);
+  syncOpponent(w);
+  w.emit(EVENT.GUARD_SPLIT, { until: o.splitUntil });
+}
+
+/** Round start, knockdowns: no split or tuck carries over. */
+export function clearSplit(w) {
+  const o = w.state.opponent;
+  o.splitUntil = -1;
+  o.tuckUntil = -1;
+  w.ctx.ai.splitWin = null;
+  w.ctx.ai.splitStart = -1;
+}
+
+/**
+ * The split as seen at a backdated hit time (D4): a snapshot showing her high guard inside [splitStart,
+ * splitUntil) is classified as the split's low guard and window. No re-simulation; only the classification.
+ */
+export function splitOverlay(w, snap, hitTime) {
+  const ai = w.ctx.ai;
+  const o = w.state.opponent;
+  if (ai.splitWin === null || snap.guard !== 'high' || snap.windowCover) return snap;
+  if (hitTime < ai.splitStart - EPS || hitTime >= o.splitUntil - EPS) return snap;
+  return { ...snap, guard: 'low', winId: ai.splitWin };
 }
 
 // ───────────────────────────────────────────── circling, cooldown, choices
@@ -168,8 +259,12 @@ function pressured(w) {
 }
 
 export function currentCooldown(w) {
-  const base = w.T.cooldown[roundIndex(w.state)];
-  return antiSpam(w) ? base * w.T.antiSpamCooldownFactor : base;
+  const T = w.T;
+  let cd = T.cooldown[roundIndex(w.state)];
+  if (antiSpam(w)) cd *= T.antiSpamCooldownFactor;
+  cd *= tiredMult(w, T.tiredCooldownMult, T.exhaustedCooldownMult); // D12
+  if (w.ctx.ai.pressNext) cd *= T.hurtCooldownMult; // D12: the player is hurt, she presses
+  return cd;
 }
 
 function zeroThirdRepeat(w, wt) {
@@ -199,10 +294,12 @@ export function comboWeights(w) {
 /** [single, feint, combo] probabilities this round, with the limits applied (a blocked kind becomes single). */
 export function kindProbs(w) {
   const ai = w.ctx.ai;
-  const [s, f, c] = w.T.sequenceKind[roundIndex(w.state)];
-  const feintOk = ai.lastKind !== 'feint' && !antiSpam(w);
-  const comboOk = ai.lastKind !== 'combo';
-  return [s + (feintOk ? 0 : f) + (comboOk ? 0 : c), feintOk ? f : 0, comboOk ? c : 0];
+  const [s, f0, c] = w.T.sequenceKind[roundIndex(w.state)];
+  const lvl = w.state.opponent?.tired;
+  const f = lvl === 'tired' ? f0 * w.T.tiredFeintMult : f0; // D12: tired → fewer feints
+  const feintOk = ai.lastKind !== 'feint' && !antiSpam(w) && lvl !== 'exhausted';
+  const comboOk = ai.lastKind !== 'combo' && lvl !== 'exhausted'; // D12: exhausted → no feints or combos
+  return [s + (f0 - f) + (feintOk ? 0 : f) + (comboOk ? 0 : c), feintOk ? f : 0, comboOk ? c : 0];
 }
 
 export function chooseAttack(w) {
@@ -271,6 +368,7 @@ function telegraphStep(w, i, windup) {
     ai.history.push(entry);
     if (ai.history.length > 8) ai.history.shift();
   }
+  addOppStamina(w, -(o.feint ? w.T.oppAttackCost.feint : w.T.oppAttackCost[step.attack])); // D12, per strike / jab
   if (o.feint) {
     const fc = w.T.feintCancel[step.attack];
     ai.feintCancelAt = w.state.time + (fc.frac !== undefined ? fc.frac * windup : windup - fc.beforeContact);
@@ -298,12 +396,13 @@ export function startSequence(w, { kind, combo = null, steps, punish = null }) {
   ai.decisionTime = 0;
   ai.offBalanceExt = 0;
   ai.feintCoverUntil = -1;
+  ai.pressNext = false;
   o.sequence = { kind, combo };
   o.feint = kind === 'feint';
   if (o.feint) ai.feintPunish = punish;
   const first = steps[0].attack;
-  const windup = kind === 'punish' ? Math.max(T.telegraphFloor, T.punishWindup)
-    : Math.max(T.telegraphFloor, T.windup[first][roundIndex(w.state)]);
+  const tired = tiredMult(w, T.tiredWindupMult, T.exhaustedWindupMult); // D12: longer only; the floor holds
+  const windup = Math.max(T.telegraphFloor, tired * (kind === 'punish' ? T.punishWindup : T.windup[first][roundIndex(w.state)]));
   telegraphStep(w, 0, windup);
 }
 
@@ -351,14 +450,13 @@ function aiPickAndStart(w) {
 // ───────────────────────────────────────────── reactions
 
 /** Stagger her: hurt for dur, cancelling any attack (and the rest of a combo). Interrupts open a 2-hit window. */
-export function staggerOpponent(w, dur, interrupt) {
+export function staggerOpponent(w, dur, interrupt, winId = null) {
   const ai = w.ctx.ai;
-  const keepCircleWin = !interrupt;
   clearAttack(w);
   ai.resolved = true;
   setStage(w, OPP_STATE.HURT, dur);
-  // the 250 ms Hurt from a circle hit belongs to that low-guard spell's window
-  ai.hurtWin = interrupt ? openWindow(w, 'hurt', w.T.freeHits.interruptHurt) : keepCircleWin ? ai.circleWin : null;
+  // the 250 ms Hurt from a circle hit belongs to the window it was landed in (low-guard spell or split)
+  ai.hurtWin = interrupt ? openWindow(w, 'hurt', w.T.freeHits.interruptHurt) : winId ?? ai.circleWin;
   syncOpponent(w);
   w.emit(EVENT.STAGGER, { who: 'opponent', dur, interrupt });
 }
@@ -392,13 +490,37 @@ function cancelFeint(w) {
   w.emit(EVENT.COVER, { reason: 'feint' });
 }
 
+/**
+ * D12 parry success: the rest of her sequence is cancelled and she recovers for parryRecoverDur with
+ * parryFreeHits (+1 if exhausted); that free hit is a riposte (M 1.5).
+ */
+export function parryRecover(w) {
+  const T = w.T;
+  const o = w.state.opponent;
+  const ai = w.ctx.ai;
+  const { attack, side, sequence } = o;
+  clearAttack(w);
+  ai.resolved = true;
+  o.attack = attack;
+  o.side = side;
+  o.sequence = sequence;
+  o.opening = true;
+  const freeHits = T.parryFreeHits + (o.tired === 'exhausted' ? T.exhaustedFreeHits : 0);
+  setStage(w, OPP_STATE.RECOVER, T.parryRecoverDur);
+  ai.recoverWin = openWindow(w, 'recover', freeHits);
+  ai.riposteWin = ai.recoverWin;
+  syncOpponent(w);
+  w.emit(EVENT.OPENING, { dur: T.parryRecoverDur, freeHits });
+}
+
 function startRecover(w) {
   const T = w.T;
   const o = w.state.opponent;
   const ai = w.ctx.ai;
   const combo = o.sequence.kind === 'combo';
   const dur = T.recoverDur[o.attack] + (combo ? T.comboRecoverExtra : 0);
-  const freeHits = T.freeHits[o.attack] + (combo ? T.comboExtraFreeHits : 0);
+  const freeHits = T.freeHits[o.attack] + (combo ? T.comboExtraFreeHits : 0) +
+    (o.tired === 'exhausted' ? T.exhaustedFreeHits : 0); // D12
   o.offBalance = o.attack === ATTACK.ANCHOR_DROP;
   o.opening = true;
   o.contactAt = null;
@@ -422,6 +544,7 @@ function circleUpdate(w, dt) {
   }
   ai.circleTime += dt;
   ai.decisionTime += dt;
+  addOppStamina(w, w.T.oppStaminaRegen * dt); // D12: she recovers only while circling
   syncOpponent(w);
   if (ai.decisionTime >= T.decisionInterval - EPS) {
     ai.decisionTime -= T.decisionInterval;

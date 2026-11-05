@@ -55,6 +55,7 @@ export function createGloves(camera) {
   let rejected = { left: -Infinity, right: -Infinity };
   const target = new THREE.Vector3();
   let lastNow = null;
+  const swipes = { left: null, right: null }; // D12 parry swipes {t, ok}
   let xMul = 1; // portrait screens pull the gloves in toward the centre so neither hangs off the edge
 
   return {
@@ -65,7 +66,8 @@ export function createGloves(camera) {
       return { left: gloves.left.group.position.toArray(), right: gloves.right.group.position.toArray(), opacity: gloves.left.opacity };
     },
     onEvent(e) {
-      if (e.type === 'punch_thrown') anims[e.hand] = { t: e.t, type: e.punchType, power: e.power };
+      if (e.type === 'punch_thrown') anims[e.hand] = { t: e.t, type: e.punchType, power: e.power, body: e.target === 'body' };
+      else if (e.type === 'parry' && e.hand) swipes[e.hand] = { t: e.t, ok: e.result === 'success' }; // D12
       else if (e.type === 'blocked' && e.by === 'player' && e.hand) bounce[e.hand] = e.t;
       else if (e.type === 'blocked' && e.by === 'opponent') blockJolt = e.t;
       else if (e.type === 'punch_rejected') rejected[e.hand] = e.t;
@@ -74,6 +76,7 @@ export function createGloves(camera) {
     },
     reset() {
       anims.left = anims.right = null;
+      swipes.left = swipes.right = null;
       bounce.left = bounce.right = blockJolt = -Infinity;
       rejected = { left: -Infinity, right: -Infinity };
     },
@@ -89,7 +92,8 @@ export function createGloves(camera) {
       lastNow = now;
       const gassed = state.time < p.gassedUntil;
       const brokenAge = state.time < p.guardBrokenUntil ? now - (p.guardBrokenUntil - G.brokenS) : -1;
-      const damp = gassed ? G.gassedDamp : p.fatigued ? G.fatigueDamp : 1;
+      const hurt = Number.isFinite(p.hurtUntil) && state.time < p.hurtUntil; // D12: heavy gloves
+      const damp = (gassed ? G.gassedDamp : p.fatigued ? G.fatigueDamp : 1) * (hurt ? 0.6 : 1);
       const guardUp = p.guard === 'full';
       const visible = state.phase !== 'boot';
 
@@ -113,9 +117,29 @@ export function createGloves(camera) {
         // event-driven extension (keyboard frames already animate ext; take the larger)
         const a = anims[side];
         let hookK = 0;
+        let upK = 0; // D11 uppercut arc 0..1
+        let dipK = 0; // D11 the short dip before it
         if (a) {
           const age = now - a.t;
-          if (age >= 0 && age < G.punchAnimS) {
+          if (a.type === 'uppercut') {
+            // 250 ms: a ~60 ms dip, then an up-and-forward arc to her chin height, then back (keyboard and camera)
+            const U = G.uppercutS;
+            if (age >= 0 && age < U) {
+              // the arc below IS the uppercut: hold the hand's height/depth from the frame at where the glove was when
+              // the punch registered, so keyboard frames (which synthesize their own dip/rise + ext pulse) and camera
+              // tracking aren't counted twice
+              if (a.y0 === undefined) a.y0 = gl.pos.y;
+              y = a.y0;
+              ext = 0;
+              const dipS = 0.06;
+              if (age < dipS) dipK = Math.sin((Math.PI / 2) * (age / dipS));
+              else {
+                const u = (age - dipS) / (U - dipS);
+                upK = Math.sin(Math.PI * Math.min(1, u * 1.15));
+                dipK = Math.max(0, 1 - u * 4);
+              }
+            }
+          } else if (age >= 0 && age < G.punchAnimS) {
             const k = Math.sin(Math.PI * age / G.punchAnimS);
             if (a.type === 'hook') hookK = Math.max(hookK, k);
             else ext = Math.max(ext, k);
@@ -127,16 +151,43 @@ export function createGloves(camera) {
         }
         ext *= damp;
         hookK *= damp;
+        upK *= damp;
 
         target.set(
           (x * (1 - 0.6 * ext) - s * hookK * 0.18) * xMul,
           y + 0.05 * ext + 0.02 * hookK,
           G.baseZ - G.reach * ext - 0.12 * hookK,
         );
-        let rx = 0.85 - 0.55 * ext + (guardUp ? 0.2 : 0);
+        // uppercut: dip down and in, then drive up (to her chin, about screen centre) and forward, knuckles up
+        target.y += -0.06 * dipK + (0.14 - target.y * 0.6) * upK;
+        target.z -= 0.2 * upK;
+        target.x -= s * 0.05 * (upK + dipK) * xMul;
+        let rx = 0.85 - 0.55 * ext + (guardUp ? 0.2 : 0) + 0.6 * upK + 0.25 * dipK; // knuckles up, forearm stays below the glove
         let ry = -s * 0.25 * (1 - ext) + s * 1.1 * hookK;
         let rz = -s * (guardUp ? 0.5 : 0.25);
 
+        // D12 body shot: the same extension on a lower line
+        if (a?.body && now - a.t >= 0 && now - a.t < G.punchAnimS) {
+          const k = Math.sin(Math.PI * (now - a.t) / G.punchAnimS);
+          target.y -= 0.11 * k;
+          rx += 0.25 * k;
+        }
+        // D12 parry: the glove swipes outward (wide and quick); a whiff swings wider and comes back slower
+        const sw = swipes[side];
+        if (sw) {
+          const dur = sw.ok ? 0.22 : 0.32;
+          const age = now - sw.t;
+          if (age >= 0 && age < dur) {
+            const k = Math.sin(Math.PI * age / dur) * (sw.ok ? 1 : 1.35);
+            target.x += s * 0.12 * k * xMul;
+            target.z += 0.03 * k;
+            rz += s * 0.7 * k;
+          }
+        }
+        if (hurt) {
+          target.y -= 0.035;
+          target.y += 0.01 * Math.sin(now * 2.2 + (s > 0 ? 0.8 : 0));
+        }
         if (gassed || p.fatigued) {
           target.y -= gassed ? 0.06 : 0.025;
           target.y += 0.008 * Math.sin(now * 4 + (s > 0 ? 1 : 0));
@@ -170,7 +221,7 @@ export function createGloves(camera) {
         if (!visible) target.y -= 0.6;
 
         // smoothing: punches and knocks snap, lost hands ease back over G.easeLost
-        const fast = ext > 0.05 || hookK > 0.05 || brokenAge >= 0 || jAge < G.blockJoltS || bAge < 0.2;
+        const fast = ext > 0.05 || (swipes[side] && now - swipes[side].t < 0.35) || hookK > 0.05 || upK > 0.02 || dipK > 0.02 || brokenAge >= 0 || jAge < G.blockJoltS || bAge < 0.2;
         const tau = fast ? 0.025 : present ? 0.05 : G.easeLost / 3;
         const k = !gl.init ? 1 : 1 - Math.exp(-dt / tau);
         gl.init = true;

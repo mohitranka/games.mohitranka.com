@@ -20,7 +20,7 @@ export function parseJsonl(text) {
     else if (o.kind === 'cue') rec.cues.push(o);
   }
   if (!rec.header) throw new Error('recording has no header line');
-  if (rec.header.v !== 1) throw new Error(`unsupported recording version ${rec.header.v}`);
+  if (rec.header.v !== 1 && rec.header.v !== 2) throw new Error(`unsupported recording version ${rec.header.v}`);
   rec.results.sort((a, b) => a.t - b.t);
   rec.cues.sort((a, b) => a.t - b.t);
   return rec;
@@ -31,7 +31,9 @@ const pts = (list) => (list ? list.map((p) => [r4(p[0]), r4(p[1]), r4(p[2] ?? 0)
 
 /** Serialize a recording object to JSONL (landmarks rounded to 4 decimals). */
 export function toJsonl(rec) {
-  const lines = [JSON.stringify({ ...rec.header, kind: 'header', v: 1 })];
+  // v2 (D13): result lines may carry `face` {x, y, w, h, score} | null (null = run, no face; absent = not run)
+  const v = rec.results.some((r) => r.face !== undefined) ? 2 : 1;
+  const lines = [JSON.stringify({ ...rec.header, kind: 'header', v })];
   const events = [
     ...rec.results.map((r) => ({
       t: r.t,
@@ -39,6 +41,7 @@ export function toJsonl(rec) {
         kind: 'r', t: r.t,
         hands: r.hands.map((h) => ({ lm: pts(h.lm), world: pts(h.world), label: h.label, score: r4(h.score ?? 1) })),
         ...(r.pipe !== undefined ? { pipe: r.pipe } : {}),
+        ...(r.face !== undefined ? { face: r.face && { x: r4(r.face.x), y: r4(r.face.y), w: r4(r.face.w), h: r4(r.face.h), score: r4(r.face.score) } } : {}),
       }),
     })),
     ...rec.cues.map((c) => ({ t: c.t, line: JSON.stringify({ kind: 'cue', t: c.t, expect: c.expect ?? null, segment: c.segment }) })),
@@ -75,7 +78,7 @@ export function createReplayFeeder(rec) {
       let n = 0;
       while (i < rec.results.length && t0 + rec.results[i].t / 1000 <= t + 1e-9) {
         const r = rec.results[i++];
-        ingest({ t: t0 + r.t / 1000, w: rec.header.w, h: rec.header.h, hands: r.hands });
+        ingest({ t: t0 + r.t / 1000, w: rec.header.w, h: rec.header.h, hands: r.hands, face: r.face }); // face: v2
         n++;
       }
       return n;

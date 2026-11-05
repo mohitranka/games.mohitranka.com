@@ -61,10 +61,10 @@ export function installTestHook(core) {
     // ── input (works on top of ANY source; lands on the next sample())
     inject: {
       /** @returns {object} the queued punch event (with its id) */
-      punch(hand, punchType = 'straight', power = 0.8, { tOnset, tCommit, inferred = false, aimX = 0.5, id } = {}) {
+      punch(hand, punchType = 'straight', power = 0.8, { tOnset, tCommit, inferred = false, aimX = 0.5, id, target } = {}) {
         need();
         if (hand !== 'left' && hand !== 'right') throw new Error(`inject.punch: bad hand ${hand}`);
-        return structuredClone(core.events.pushPunch({ hand, punchType, power, tOnset, tCommit, inferred, aimX, id }));
+        return structuredClone(core.events.pushPunch({ hand, punchType, power, tOnset, tCommit, inferred, aimX, id, target }));
       },
       /** 'none' | 'full' persists until changed; null releases the override */
       guard(level) {
@@ -75,6 +75,12 @@ export function installTestHook(core) {
       latency(ms) {
         need();
         core.events.setLatency(ms);
+      },
+      /** D12: a parry input (the camera swipe / A ; key form), on the next sample(). No guard delay, no refractory. */
+      parry(hand, { tOnset, tCommit, id } = {}) {
+        need();
+        if (hand !== 'left' && hand !== 'right') throw new Error(`inject.parry: bad hand ${hand}`);
+        return structuredClone(core.events.pushParry({ hand, tOnset, tCommit, id }));
       },
       /** D10 tests: force frame.tracking.ok (false = camera lost); null releases */
       trackingOk(v) {
@@ -121,6 +127,10 @@ export function installTestHook(core) {
     /** ?debug=1 only: the overlay API (copyText, setSlider, startRecording, recorder); null otherwise */
     get debugOverlay() {
       return core.getOverlay();
+    },
+    /** M5+ feature flags (all true with ?next=1, else false) — frozen */
+    get features() {
+      return core.features;
     },
     /** which layers are real vs stubbed */
     get layers() {
