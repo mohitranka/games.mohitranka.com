@@ -212,6 +212,19 @@ body.phase-boot .hud-top, body.phase-calibration .hud-top, body.phase-boot .hud-
   font: 800 8px/1 var(--body); letter-spacing: 0.2em; text-transform: uppercase; color: #fff;
 }
 .bar.sta.gassed .tag { display: grid; }
+/* D9a pressure: guarding regen is slowed — a cold, slowly drifting striped tint plus a small label */
+.bar.sta.pressured { box-shadow: inset 0 0 0 1.5px rgba(150, 170, 255, 0.7), 0 0 10px rgba(120, 140, 255, 0.35); }
+.bar.sta.pressured .fill {
+  background: repeating-linear-gradient(-45deg, #8fb0ff 0 6px, #6f86d8 6px 12px);
+  background-size: 34px 100%;
+  animation: slowregen 2.4s linear infinite;
+}
+.bar.sta.pressured.gassed .fill { background: #8a8494; animation: none; }
+.bar.sta .slow { display: none; position: absolute; left: calc(100% + 6px); top: 50%; transform: translateY(-50%); white-space: nowrap; font: 700 9px/1 var(--body); letter-spacing: 0.12em; text-transform: uppercase; color: #b9c8ff; }
+.bar.sta { overflow: visible; }
+.bar.sta .fill, .bar.sta .cost { border-radius: 4px; }
+.bar.sta.pressured .slow { display: block; }
+@keyframes slowregen { to { background-position: 34px 0; } }
 .bar.sta.gassed { height: 12px; }
 @keyframes pulse { 50% { opacity: 0.55; } }
 
@@ -364,9 +377,41 @@ body.phase-round_end .hud-callout, body.phase-match_end .hud-callout, body.phase
 }
 .chips span.lit { background: var(--brass); color: var(--night); box-shadow: 0 0 14px rgba(215, 169, 71, 0.7); }
 .score { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.hud-card .points { margin: 6px 0 0; display: flex; justify-content: center; align-items: baseline; gap: 0.4em; font: 800 2.6rem/1 var(--display); font-variant-numeric: tabular-nums; }
+.hud-card .points .dash { color: var(--ink-dim); font-weight: 600; }
+.hud-card .points-key { margin: 4px 0 12px; font-size: 0.75rem; color: var(--ink-dim); }
 .score div { display: grid; gap: 2px; padding: 8px 4px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); }
 .score b { font: 800 1.5rem/1 var(--display); font-variant-numeric: tabular-nums; }
 .score span { font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-dim); }
+
+/* ───────────── D10 gesture prompts: ring + gesture (camera), key hint underneath; key hint only (keyboard) */
+.prompt { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.prompt.cam { margin-top: 12px; font: 700 1.05rem/1.2 var(--display); letter-spacing: 0.06em; text-transform: uppercase; color: #ffe2b0; }
+.prompt.key-only { margin-top: 10px; font-size: 0.9rem; color: var(--ink-dim); }
+.keyhint { margin-top: 4px; font-size: 0.78rem; color: var(--ink-dim); text-align: center; }
+.ring-wrap { position: relative; display: inline-grid; place-items: center; width: 46px; height: 46px; flex: none; }
+.ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring circle { fill: none; stroke-width: 3; }
+.ring .track { stroke: rgba(243, 234, 216, 0.22); }
+.ring .fill { stroke: var(--brass); stroke-linecap: round; transition: stroke-dashoffset 0.06s linear; }
+.prompt[data-g='pause'] .ring .fill { stroke: #8fd3ff; }
+.prompt.holding .ring-wrap { filter: drop-shadow(0 0 8px rgba(255, 211, 107, 0.7)); }
+.ring-wrap .icon { position: relative; font-size: 15px; letter-spacing: -2px; }
+.hud-prompt {
+  position: absolute; left: 50%; top: 56%; transform: translateX(-50%);
+  padding: 10px 18px 12px; border-radius: 14px; background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--panel-edge), 0 12px 36px rgba(0, 0, 0, 0.4);
+  text-align: center; max-width: calc(100vw - 32px); box-sizing: border-box;
+}
+.hud-prompt[hidden] { display: none; }
+.hud-prompt .prompt.cam, .hud-prompt .prompt.key-only { margin-top: 0; }
+/* the in-fight hint is quiet: small, low, translucent */
+.hud-prompt.fight { top: auto; bottom: 14px; padding: 4px 12px; background: rgba(18, 14, 32, 0.45); box-shadow: none; opacity: 0.8; }
+.hud-prompt.fight .prompt.cam { font-size: 0.75rem; }
+.hud-prompt.fight .ring-wrap { width: 28px; height: 28px; }
+.hud-prompt.fight .ring-wrap .icon { font-size: 10px; }
+.hud-prompt.fight .keyhint { display: none; }
+.hud-calib .calib-prompt .prompt.cam { margin-top: 4px; }
 
 /* ───────────── calibration */
 .hud-calib {
@@ -446,6 +491,20 @@ body.phase-round_end .hud-callout, body.phase-match_end .hud-callout, body.phase
   .bar.sta { width: 34vw; }
   .score { grid-template-columns: repeat(2, 1fr); }
 }
+/* the D9 result card carries a points line too: keep it clear of the top bars on short or narrow screens */
+@media (max-height: 520px), (max-width: 400px) {
+  .hud-card { padding: 10px 14px; }
+  .hud-card.result h2 { font-size: 2rem; }
+  .hud-card .lede { margin-bottom: 6px; }
+  .hud-card .points { font-size: 1.8rem; margin-top: 0; }
+  .hud-card .points-key { display: none; }
+  .score { gap: 4px; margin-top: 6px; }
+  .score div { padding: 4px 2px; }
+  .score b { font-size: 1.1rem; }
+  .hud-card .row { margin-top: 8px; }
+  .hud-card.result { top: auto; bottom: 12px; transform: translateX(-50%); }
+}
 @media (prefers-reduced-motion: reduce) {
   .hud-center .big, .hud-callout.show { animation-duration: 0.01s; }
 }
+@media (max-width: 640px) { .bar.sta.pressured .slow { display: none; } }

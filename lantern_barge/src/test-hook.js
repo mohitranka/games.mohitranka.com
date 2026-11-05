@@ -76,6 +76,11 @@ export function installTestHook(core) {
         need();
         core.events.setLatency(ms);
       },
+      /** D10 tests: force frame.tracking.ok (false = camera lost); null releases */
+      trackingOk(v) {
+        need();
+        core.events.setTrackingOk(v);
+      },
     },
     /** url or JSONL text → Promise<{results, cues, durationS, calibrate}>; switches to the replay HandSource */
     loadReplay(urlOrJsonl, opts = {}) {
@@ -87,6 +92,12 @@ export function installTestHook(core) {
     command(cmd) {
       need();
       core.command(cmd);
+    },
+    /** D9 shorthand for command({type:'force_sequence', ...}) — test/debug only, like the command itself.
+     *  e.g. forceSequence({kind:'feint', attack:'anchor_drop', punish:true}), forceSequence({kind:'combo', combo:'snap_drop'}) */
+    forceSequence(opts) {
+      need();
+      core.command({ type: 'force_sequence', ...opts });
     },
 
     // ── tuning: {input, game, view} by reference

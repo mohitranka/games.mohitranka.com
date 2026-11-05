@@ -5,14 +5,17 @@
 //   * every tick pushes a snapshot of Tamsin into a ring;
 //   * a punch is CLASSIFIED against the snapshot at its hit time (tOnset − punchBackdate);
 //   * its damage and side effects apply on the current tick;
-//   * only the interrupt window closes early (latencyBudget − impactDelay before contact);
+//   * only the interrupt window closes early: latencyBudget + punchBackdate − impactDelay (113 ms) before
+//     contact, so a straight backdated into it at the full latency budget still arrives before the strike
+//     resolves (BUG-009; D4 "never applied after the strike resolved", D9 "always interrupts");
 //   * her strike resolves at contact + impactDelay and is blocked by ≥ 2 consecutive raw guard samples
 //     spanning ≥ 30 ms inside [contact, contact + impactDelay].
 
 import { EVENT, OPP_STATE, ATTACK, PHASE, PUNCH } from '../shared/constants.js';
 import { EPS, isGassed, punchCost, fatigueFactor, spend } from './stamina.js';
-import { staggerOpponent, extendOffBalance } from './opponent-ai.js';
+import { staggerOpponent, extendOffBalance, liveWindow, windowLeft, spendFreeHit } from './opponent-ai.js';
 import { knockdown } from './phases.js';
+import { noteCounter } from './pressure.js';
 
 // ───────────────────────────────────────────── snapshot ring and raw guard samples
 
@@ -35,6 +38,9 @@ export function snapshotOf(w) {
     opening: o.opening,
     offBalance: o.offBalance,
     staggerImmuneUntil: o.staggerImmuneUntil,
+    feint: o.feint,
+    covering: o.covering,
+    winId: liveWindow(w), // free-hit window her state belonged to at this tick (D9)
     seq: w.ctx.ai.seq,
   };
 }
@@ -86,9 +92,11 @@ export function lateBlock(samples, contactAt, T) {
   return false;
 }
 
-// ───────────────────────────────────────────── classification (GDD §6 interaction table)
+// ───────────────────────────────────────────── classification (GDD §6 interaction table, D9)
 
 /**
+ * Classify against the snapshot. Free-hit budgets are checked afterwards against the LIVE window (combat
+ * resolves on the current tick), see resolvePlayerPunch.
  * @returns {{kind:'whiff'|'blocked'|'hit', M:number, counter:boolean, interrupt:boolean, clean:boolean,
  *            stagger:boolean}}
  */
@@ -99,23 +107,41 @@ export function classifyPunch(T, snap, punch, hitTime) {
   const aimX = punch.aim?.x ?? 0.5;
   if (straight && (aimX < T.aimZone[0] - EPS || aimX > T.aimZone[1] + EPS)) return { ...res, kind: 'whiff', clean: false };
 
-  if (snap.state === OPP_STATE.RECOVER) return { ...res, M: T.counterMult, counter: true };
-
-  if (snap.state === OPP_STATE.TELEGRAPH && snap.attack === ATTACK.ANCHOR_DROP && snap.contactAt !== null) {
+  // interrupt window: a REAL Anchor Drop only (a feint is cancelled before its window would open)
+  if (snap.state === OPP_STATE.TELEGRAPH && snap.attack === ATTACK.ANCHOR_DROP && !snap.feint && snap.contactAt !== null) {
     const open = snap.contactAt - T.interruptWindowOpen;
-    const close = snap.contactAt - (T.latencyBudget - T.impactDelay);
+    const close = interruptWindowClose(T, snap.contactAt);
     const inWindow = hitTime >= open - EPS && hitTime <= close + EPS;
     if (inWindow && straight && punch.power >= T.interruptPowerMin - EPS) {
       return { ...res, M: T.interruptMult, interrupt: true };
     }
   }
 
-  if (snap.guard === 'high') {
-    if (straight) return { ...res, kind: 'blocked', M: 0, clean: false };
-    return { ...res, M: T.highGuardHookMult, clean: false };
-  }
+  // any high guard: circle high, telegraphs before the interrupt window, feints, cover-up
+  if (snap.guard === 'high') return highGuard(T, res, straight);
+  if (snap.state === OPP_STATE.RECOVER) return { ...res, M: T.counterMult, counter: true };
   // circle with a low guard is the only plain state that staggers (hurt is already staggered)
   return { ...res, stagger: snap.state === OPP_STATE.CIRCLE };
+}
+
+/** The interrupt window closes this long before contact (BUG-009: the backdate is part of the budget). */
+export function interruptWindowClose(T, contactAt) {
+  return contactAt - (T.latencyBudget + T.punchBackdate - T.impactDelay);
+}
+
+function highGuard(T, res, straight) {
+  if (straight) return { ...res, kind: 'blocked', M: 0, clean: false, counter: false, stagger: false };
+  return { ...res, M: T.highGuardHookMult, clean: false, counter: false, stagger: false };
+}
+
+// ───────────────────────────────────────────── points (D9: % of the opponent's max HP, 0.1 steps)
+
+function addDamage(w, by, amount) {
+  const st = w.state;
+  const d = w.ctx.dealt;
+  d[by] += amount;
+  const target = by === 'player' ? st.opponent : st.player;
+  st[by].points = Math.round((1000 * d[by]) / target.maxHp) / 10;
 }
 
 // ───────────────────────────────────────────── player punches
@@ -163,6 +189,13 @@ export function resolvePlayerPunch(w, ev) {
     if (!pending) Object.assign(c, { M: 1, interrupt: false });
   }
 
+  // free hits (D9): a clean hit in a guard-down window needs budget left in that window, checked live
+  let spendWin = null;
+  if (c.kind === 'hit' && c.clean && !c.interrupt && snap.winId != null) {
+    if (windowLeft(w, snap.winId) > 0) spendWin = snap.winId;
+    else Object.assign(c, highGuard(T, c, punchType !== PUNCH.HOOK)); // she has covered up
+  }
+
   if (c.kind === 'whiff') {
     cost += T.whiffExtraStamina;
     p.stats.whiffed += 1;
@@ -173,7 +206,7 @@ export function resolvePlayerPunch(w, ev) {
   if (c.kind === 'blocked') {
     p.stats.blocked += 1;
     w.emit(EVENT.BLOCKED, { by: 'player', hand, punchType, attack: null, staminaCost: 0 });
-    spend(w, cost);
+    spend(w, cost + T.blockedStraightExtraStamina); // D9a: hitting her glove is tiring
     return;
   }
 
@@ -181,10 +214,11 @@ export function resolvePlayerPunch(w, ev) {
   const raw = base * (0.5 + 0.5 * power) * fatigue * c.M;
   const damage = Math.min(o.hp, raw);
   o.hp -= damage;
-  p.points += damage;
+  addDamage(w, 'player', damage);
   p.stats.landed += 1;
   if (c.counter) p.stats.counters += 1;
   if (c.interrupt) p.stats.interrupts += 1;
+  if (c.counter || c.interrupt) noteCounter(w); // D9a: pressure ends
   w.emit(EVENT.HIT, { by: 'player', hand, punchType, power, damage, counter: c.counter, interrupt: c.interrupt });
 
   if (o.hp <= EPS) {
@@ -203,6 +237,7 @@ export function resolvePlayerPunch(w, ev) {
     } else if (c.stagger && o.state === OPP_STATE.CIRCLE && (t >= o.staggerImmuneUntil - EPS || o.offBalance)) {
       staggerOpponent(w, T.hurtDur, false);
     }
+    if (spendWin !== null) spendFreeHit(w, spendWin); // emits cover when the budget runs out
     // anti-stun-lock: 3 clean hits within 1.5 s → immune to stagger for 1 s
     ai.cleanHits.push(t);
     while (ai.cleanHits.length && ai.cleanHits[0] < t - T.stunLockWindow - EPS) ai.cleanHits.shift();
@@ -220,7 +255,7 @@ function damagePlayer(w, amount) {
   const st = w.state;
   const applied = Math.min(st.player.hp, amount);
   st.player.hp -= applied;
-  st.opponent.points += applied;
+  addDamage(w, 'opponent', applied);
   return applied;
 }
 
@@ -237,8 +272,11 @@ export function resolveStrike(w) {
   const attack = o.attack;
   const side = o.side;
   const guarded = lateBlock(w.ctx.guardSamples, o.contactAt, T) && t >= p.guardBrokenUntil - EPS;
+  const anchor = attack === ATTACK.ANCHOR_DROP;
+  const pressured = !!p.pressured; // D9a
+  const breakBelow = pressured ? T.pressureGuardBreakBelow : T.guardBreakBelow;
 
-  if (guarded && attack === ATTACK.ANCHOR_DROP && p.stamina < T.guardBreakBelow) {
+  if (guarded && anchor && p.stamina < breakBelow) {
     p.guardBrokenUntil = t + T.guardBreakDur;
     p.guard = 'none';
     p.guardHeldSince = -1;
@@ -246,10 +284,10 @@ export function resolveStrike(w) {
     const damage = damagePlayer(w, T.strikeDamage[attack]);
     w.emit(EVENT.PLAYER_HIT, { attack, side, damage, shakeTier: T.shakeTier[attack] });
   } else if (guarded) {
-    const cost = T.blockCost[attack];
+    const cost = anchor && pressured ? T.pressureAnchorBlockCost : T.blockCost[attack];
     w.emit(EVENT.BLOCKED, { by: 'opponent', hand: side, punchType: null, attack, staminaCost: cost });
     spend(w, cost);
-    damagePlayer(w, T.blockedDamage[attack]);
+    damagePlayer(w, anchor && pressured ? T.pressureAnchorBlockedDmg : T.blockedDamage[attack]);
   } else {
     const damage = damagePlayer(w, T.strikeDamage[attack]);
     w.emit(EVENT.PLAYER_HIT, { attack, side, damage, shakeTier: T.shakeTier[attack] });

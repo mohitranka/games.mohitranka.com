@@ -7,6 +7,7 @@ import { createInputFrame } from '../shared/fixtures.js';
 import { createInputPipeline } from './pipeline.js';
 import { createCalibration } from './calibration.js';
 import { createReplayFeeder } from './replay.js';
+import { createGestureDetector } from './gestures.js';
 import { DEFAULT_PROFILE } from './tuning.js';
 
 /**
@@ -17,6 +18,7 @@ import { DEFAULT_PROFILE } from './tuning.js';
 export function createHandSource({ backend, clock, tuning, recording = null, calibrate = false, video = null, prefer = 'GPU' }) {
   const pipeline = createInputPipeline({ tuning, profile: DEFAULT_PROFILE });
   const calib = createCalibration({ tuning });
+  const gestures = createGestureDetector({ tuning });
   const wanted = backend === 'camera' || (backend === 'replay' && calibrate);
   let calibratedProfile = null;
   const queue = [];
@@ -60,6 +62,7 @@ export function createHandSource({ backend, clock, tuning, recording = null, cal
       }
     }
     updateSpot(result.t);
+    gestures.update(pipeline.tracker, pipeline.recognizer, activeProfile(), result.t);
     for (const fn of listeners) fn({ result, punches, raw });
   }
 
@@ -99,6 +102,7 @@ export function createHandSource({ backend, clock, tuning, recording = null, cal
     f.guard = { ...fs.guard };
     f.tracking = tracking();
     f.calibration = { ...calib.status(), wanted };
+    f.gesture = gestures.read(t, drain);
     f.spot = {
       kGuardDrift: spotDrift,
       hint: spotDrift !== null && spotDrift > tuning.spotDriftMax ? 'return_to_spot' : null,
@@ -188,6 +192,10 @@ export function createHandSource({ backend, clock, tuning, recording = null, cal
     },
     cancelCalibration() {
       calib.cancel();
+    },
+    /** D10: which held gestures count right now (main.js derives this from the phase). */
+    setGestureMode(m) {
+      gestures.setMode(m);
     },
 
     // ── diagnostics (overlay, recorder, tests)

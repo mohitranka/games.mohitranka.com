@@ -30,7 +30,40 @@ export const EVENT_VOICES = Object.freeze({
   knockdown: 'thud+crowd-roar',
   count: 'woodblock',
   getup: 'crowd-cheer',
+  feint_cancel: 'glove-tap+hah', // D9
+  cover: 'leather-creak', // D9
+  pressure: 'shell-bark+jeer', // D9a (on:true only)
 });
+
+/**
+ * The exact voices an event plays (D9 telegraph variants included). Pure, so tests can check the plan
+ * without an unlocked AudioContext.
+ * @returns {string[]}
+ */
+export function voicesFor(e) {
+  switch (e.type) {
+    case 'telegraph': {
+      const v = [];
+      const follow = e.comboIndex > 0;
+      if (follow && e.combo) {
+        v.push('double-tick'); // chain cue: the full wind-up sound would be too slow for the gap
+        if (e.attack === 'anchor_drop') v.push('foghorn'); // the foghorn still means "interrupt possible"
+      } else if (follow) {
+        v.push('jab-tick'); // Rope Snap jabs 2–3 of a single sequence
+      } else {
+        v.push(e.attack === 'rope_snap' ? 'rope-creak' : e.attack === 'swing_bridge' ? 'timber-groan' : 'foghorn');
+        if (e.feint !== true) v.push('plant'); // real wind-ups only: heel drop + deck creak (feints sound the same otherwise)
+      }
+      if (e.afterFeint) v.push('gotcha');
+      return v;
+    }
+    case 'feint_cancel': return ['glove-tap', 'hah'];
+    case 'cover': return ['leather-creak'];
+    case 'pressure': return e.on ? ['shell-bark', 'jeer'] : [];
+    case 'hit': return e.interrupt ? [EVENT_VOICES.hit, 'cut-strike'] : [EVENT_VOICES.hit];
+    default: return EVENT_VOICES[e.type] ? [EVENT_VOICES[e.type]] : [];
+  }
+}
 
 export function createAudio() {
   /** @type {AudioContext|null} */
@@ -100,7 +133,10 @@ export function createAudio() {
     src.connect(bq).connect(g).connect(out(pan));
     src.start(t, Math.random() * 1.5);
     src.stop(t + a + sustain + d + 0.05);
+    return { src, g };
   }
+
+  let strikeVoice = null; // the latest strike whoosh, so a late interrupt can cut it (BUG-009)
 
   // ── voices
   const V = {
@@ -141,7 +177,14 @@ export function createAudio() {
       noise({ t, a: 0.01, peak, d: 0.1, type: 'highpass', f0: 1800, f1: 3500, q: 0.7, pan });
     },
     strikeWhoosh(t, pan) {
-      noise({ t, a: 0.02, peak: 0.16, d: 0.12, f0: 400, f1: 1900, q: 1.5, pan });
+      strikeVoice = { t, ...noise({ t, a: 0.02, peak: 0.16, d: 0.12, f0: 400, f1: 1900, q: 1.5, pan }) };
+    },
+    cutStrike() { // the interrupt landed while her swing was still sounding: choke it off
+      if (!strikeVoice || ac.currentTime - strikeVoice.t > 0.3) return;
+      const now = ac.currentTime;
+      strikeVoice.g.gain.cancelScheduledValues(now);
+      strikeVoice.g.gain.setTargetAtTime(0.0001, now, 0.008);
+      strikeVoice = null;
     },
     impact(t, power, pan) {
       const p = clamp01(power);
@@ -178,6 +221,73 @@ export function createAudio() {
     },
     dullTick(t, pan) {
       tone({ f0: 160, f1: 110, t, a: 0.002, peak: 0.12, d: 0.06, pan });
+    },
+    /** A voiced syllable: a sawtooth glottal source through two vowel formants, optional breathy onset. */
+    vowel(t, { f0, f1 = f0, formants, dur, peak = 0.12, breath = 0, pan = 0 }) {
+      const o = ac.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(f0, t);
+      o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      const g = ac.createGain();
+      env(g, t, 0.015, peak, dur);
+      for (const [f, q, w] of formants) {
+        const bq = ac.createBiquadFilter();
+        bq.type = 'bandpass';
+        bq.frequency.value = f;
+        bq.Q.value = q;
+        const wg = ac.createGain();
+        wg.gain.value = w;
+        o.connect(bq).connect(wg).connect(g);
+      }
+      g.connect(out(pan));
+      o.start(t);
+      o.stop(t + dur + 0.1);
+      if (breath) noise({ t: t - 0.03, a: 0.005, peak: breath, d: 0.05, f0: 1600, q: 0.8, pan });
+    },
+    hah(t, pan) { // the scoff after a feint
+      V.vowel(t + 0.04, { f0: 235, f1: 165, formants: [[820, 6, 1.4], [1250, 8, 0.9], [2600, 6, 0.3]], dur: 0.2, peak: 0.16, breath: 0.12, pan });
+    },
+    gotcha(t, pan) { // "Gotcha!" on a punish telegraph
+      V.vowel(t, { f0: 215, f1: 205, formants: [[460, 7, 1.4], [820, 8, 0.8]], dur: 0.11, peak: 0.13, pan }); // go
+      noise({ t: t + 0.13, peak: 0.12, d: 0.012, type: 'highpass', f0: 3200, q: 0.7, pan }); // t
+      noise({ t: t + 0.15, a: 0.01, peak: 0.1, d: 0.06, f0: 3300, q: 2, pan }); // ch
+      V.vowel(t + 0.19, { f0: 240, f1: 175, formants: [[800, 6, 1.4], [1250, 8, 0.9]], dur: 0.16, peak: 0.14, pan }); // a
+    },
+    shellBark(t) { // "Come out of that shell!" — five quick syllables with a taunting rise on "shell"
+      const syl = [
+        [0.0, 0.1, 210, 200, [[640, 7, 1.3], [1190, 8, 0.8]]], // come
+        [0.12, 0.13, 225, 205, [[760, 6, 1.3], [1100, 8, 0.8]]], // out
+        [0.27, 0.07, 200, 195, [[500, 7, 1.2], [1500, 8, 0.6]]], // of
+        [0.36, 0.11, 230, 215, [[700, 6, 1.3], [1700, 8, 0.7]]], // that
+        [0.56, 0.26, 260, 175, [[560, 6, 1.3], [1850, 8, 0.8]]], // shell
+      ];
+      for (const [dt, dur, f0, f1, formants] of syl) V.vowel(t + dt, { f0, f1, formants, dur, peak: 0.13 });
+      noise({ t: t + 0.36, peak: 0.05, d: 0.02, f0: 4200, q: 3 }); // th
+      noise({ t: t + 0.48, a: 0.02, peak: 0.1, d: 0.07, f0: 3600, q: 2 }); // sh
+    },
+    jeer(t) { // a crowd boo from the bank: detuned low voices through an "oo" formant
+      for (const [f, dt] of [[132, -12], [151, 7], [168, -5], [189, 11]]) {
+        tone({ type: 'sawtooth', f0: f, f1: f * 0.88, t: t + 0.7, a: 0.25, peak: 0.035, sustain: 0.6, d: 0.6, detune: dt, filter: { type: 'bandpass', f: 330, q: 3 } });
+      }
+      noise({ t: t + 0.7, a: 0.3, peak: 0.05, sustain: 0.5, d: 0.6, f0: 520, f1: 420, q: 1.5 });
+    },
+    plant(t, pan) { // heel drop + deck-board creak
+      tone({ f0: 80, f1: 45, t, a: 0.003, peak: 0.32, d: 0.09, pan });
+      tone({ type: 'sawtooth', f0: 175, f1: 128, t: t + 0.025, a: 0.01, peak: 0.08, d: 0.2, pan, filter: { type: 'bandpass', f: 680, q: 10 } });
+      noise({ t: t + 0.03, peak: 0.05, d: 0.12, f0: 1150, f1: 900, q: 12, pan });
+    },
+    doubleTick(t, pan) { // combo chain cue
+      for (const dt of [0, 0.065]) {
+        noise({ t: t + dt, peak: 0.2, d: 0.025, f0: 2900, q: 9, pan });
+        tone({ f0: 1900, t: t + dt, a: 0.001, peak: 0.07, d: 0.04, pan });
+      }
+    },
+    gloveTap(t, pan) {
+      for (const dt of [0, 0.045]) noise({ t: t + dt, peak: 0.24, d: 0.04, type: 'lowpass', f0: 1400, q: 1, pan });
+    },
+    leatherCreak(t) {
+      for (let i = 0; i < 6; i++) noise({ t: t + i * 0.028, peak: 0.07 * (1 - i * 0.12), d: 0.03, f0: 430 + i * 25, q: 7 });
+      tone({ type: 'sawtooth', f0: 112, f1: 96, t, a: 0.02, peak: 0.05, d: 0.22, filter: { type: 'bandpass', f: 520, q: 12 } });
     },
     woodblock(t, n) {
       tone({ f0: 820 + n * 25, t, a: 0.001, peak: 0.3, d: 0.08, filter: { type: 'bandpass', f: 900 + n * 25, q: 3 } });
@@ -218,13 +328,29 @@ export function createAudio() {
     const myPan = e.hand === 'left' ? -0.3 : e.hand === 'right' ? 0.3 : 0;
     switch (e.type) {
       case 'telegraph':
-        if (e.comboIndex > 0) V.jabTick(t, herPan);
-        else if (e.attack === 'rope_snap') V.ropeCreak(t, herPan);
-        else if (e.attack === 'swing_bridge') V.timberGroan(t, herPan);
-        else if (e.attack === 'anchor_drop') V.foghorn(t);
+      case 'feint_cancel':
+      case 'cover':
+      case 'pressure': {
+        const VOICE = {
+          'rope-creak': () => V.ropeCreak(t, herPan),
+          'timber-groan': () => V.timberGroan(t, herPan),
+          foghorn: () => V.foghorn(t),
+          'jab-tick': () => V.jabTick(t, herPan),
+          'double-tick': () => V.doubleTick(t, herPan),
+          plant: () => V.plant(t + 0.01, -herPan * 0.5), // her rear foot
+          gotcha: () => V.gotcha(t + 0.06, herPan),
+          'glove-tap': () => V.gloveTap(t, herPan),
+          hah: () => V.hah(t + 0.03, 0),
+          'leather-creak': () => V.leatherCreak(t),
+          'shell-bark': () => V.shellBark(t + 0.05),
+          jeer: () => V.jeer(t),
+        };
+        for (const v of voicesFor(e)) VOICE[v]?.();
         break;
+      }
       case 'strike': V.strikeWhoosh(t, herPan); break;
       case 'hit':
+        if (e.interrupt) V.cutStrike();
         V.impact(t, e.power ?? 0.6, myPan);
         if (e.counter || e.interrupt) V.brassDing(t + 0.02);
         break;
@@ -274,7 +400,7 @@ export function createAudio() {
         const voice = EVENT_VOICES[e.type];
         if (!voice) continue;
         responses[e.type] = (responses[e.type] ?? 0) + 1;
-        log.push({ type: e.type, voice });
+        log.push({ type: e.type, voice, voices: voicesFor(e) });
         if (log.length > 200) log.shift();
         // nothing plays until the player's gesture has unlocked the context
         if (!ac || ac.state !== 'running' || muted) continue;

@@ -15,7 +15,8 @@ import { tuning as defaultTuning } from './tuning.js';
 import { createRng } from './rng.js';
 import { EPS, regen, updateFlags } from './stamina.js';
 import { resolvePlayerPunch, pushSnapshot, recordGuardSample } from './combat.js';
-import { createAIContext, forceAttack, toCircle } from './opponent-ai.js';
+import { createAIContext, forceAttack, forceSequence, toCircle, syncOpponent } from './opponent-ai.js';
+import { createPressureContext } from './pressure.js';
 import {
   freshPlayer, freshOpponent, enterCalibration, enterPractice, enterBoot, startMatch, gotoPhase, updatePhase,
 } from './phases.js';
@@ -25,9 +26,11 @@ function createCtx(rng, T) {
     ring: [], // opponent snapshots (combat.js)
     guardSamples: [], // raw guard samples (combat.js)
     lastActionT: -Infinity, // last punch or block (stamina regen delay)
+    dealt: { player: 0, opponent: 0 }, // raw damage dealt this match; state points are % of the other's maxHp (D9)
     countdownT0: 0,
     pausedAt: null,
     ai: createAIContext(rng, T),
+    pressure: createPressureContext(),
   };
 }
 
@@ -106,8 +109,11 @@ export function createSim({ seed = 1, tuning = defaultTuning, allowDebug = false
     o.staggerImmuneUntil = sh(o.staggerImmuneUntil);
     if (o.down) o.down.since += d;
     w.ctx.lastActionT = sh(w.ctx.lastActionT);
+    w.ctx.pressure.lastCounterT += d;
     w.ctx.countdownT0 += d;
     w.ctx.ai.cleanHits = w.ctx.ai.cleanHits.map((x) => x + d);
+    if (w.ctx.ai.feintCancelAt !== null) w.ctx.ai.feintCancelAt += d;
+    w.ctx.ai.feintCoverUntil = sh(w.ctx.ai.feintCoverUntil);
     w.ctx.ring.length = 0; // pre-pause snapshots and samples no longer line up with the shifted timeline
     w.ctx.guardSamples.length = 0;
   }
@@ -149,20 +155,21 @@ export function createSim({ seed = 1, tuning = defaultTuning, allowDebug = false
       case COMMAND.GOTO_PHASE:
         gotoPhase(w, cmd.phase);
         break;
-      case COMMAND.FORCE_ATTACK: {
-        if (st.phase !== PHASE.FIGHT || !Object.values(ATTACK).includes(cmd.attack)) {
-          console.warn(`[sim] force_attack ignored (phase ${st.phase}, attack ${cmd.attack})`);
+      case COMMAND.FORCE_ATTACK:
+      case COMMAND.FORCE_SEQUENCE: {
+        const blocked = st.phase !== PHASE.FIGHT ? `phase ${st.phase}`
+          : st.player.down || st.opponent.down ? 'a knockdown count'
+            : st.round.countdown !== null ? 'the pre-round countdown' : null;
+        if (blocked) {
+          console.warn(`[sim] ${cmd.type} ignored during ${blocked}`);
           break;
         }
-        if (st.player.down || st.opponent.down) {
-          console.warn('[sim] force_attack ignored during a knockdown count');
-          break;
+        if (cmd.type === COMMAND.FORCE_ATTACK) {
+          if (!Object.values(ATTACK).includes(cmd.attack)) console.warn(`[sim] force_attack: bad attack ${cmd.attack}`);
+          else forceAttack(w, cmd.attack, cmd.side, cmd.combo);
+        } else if (!forceSequence(w, cmd)) {
+          console.warn(`[sim] force_sequence: invalid ${JSON.stringify(cmd)}`);
         }
-        if (st.round.countdown !== null) {
-          console.warn('[sim] force_attack ignored during the pre-round countdown');
-          break;
-        }
-        forceAttack(w, cmd.attack, cmd.side, cmd.combo);
         break;
       }
       case COMMAND.DEBUG_SET:
@@ -221,6 +228,7 @@ export function createSim({ seed = 1, tuning = defaultTuning, allowDebug = false
       if (s2.phase !== PHASE.ROUND_END) s2.round.restLeft = null;
       else if (!s2.paused) s2.round.restLeft = Math.max(0, T.restLength - (s2.time - s2.phaseStart));
       updateFlags(w);
+      if (w.state.phase === PHASE.FIGHT && !w.state.paused) syncOpponent(w);
       if (!w.state.paused) pushSnapshot(w);
       return w.out;
     },

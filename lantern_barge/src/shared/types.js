@@ -78,6 +78,18 @@ export {};
  * @property {InputEvent[]} events         drained by sample(); always [] from peek()
  * @property {CalibrationStatus} calibration
  * @property {{kGuardDrift:number|null, hint:'return_to_spot'|null}} spot   always {null,null} for keyboard
+ * @property {GestureState} gesture        D10 camera gestures; always idle for keyboard
+ */
+
+/**
+ * D10 held camera gestures (camera and replay sources).
+ * @typedef {Object} GestureState
+ * @property {'confirm'|'pause'|'resume'|null} kind   the hold in progress (or the one that just fired), else null
+ *           confirm = both fists in the guard zone; pause = both hands open at face height (also cancels
+ *           calibration); resume = the 3-2-1 auto-resume after a camera-loss pause (guard held 3 s)
+ * @property {number}  progress     0..1 of the hold (resume: 3-2-1 is 3 − floor(progress × 3))
+ * @property {boolean} fired        true on the one sampled frame where the hold completed
+ * @property {Array<'confirm'|'pause'|'resume'>} available   gestures that count in this phase (prompt copy)
  */
 
 /**
@@ -148,13 +160,14 @@ export {};
  * @property {number} maxStamina
  * @property {boolean} fatigued        display flag: stamina below the GDD fatigue line
  * @property {boolean} lowHp           display flag
+ * @property {boolean} pressured       D9a: pressure is on (no counter for 8 s while guarding ≥ 70 %); see game-design §5/§6
  * @property {number}  gassedUntil     sim s; gassed while time < gassedUntil (-1 = never)
  * @property {'none'|'full'} guard     EFFECTIVE guard: guardBroken ? 'none' : frame.guard.level (D3)
  * @property {number}  guardBrokenUntil  sim s (-1 = never)
  * @property {number}  guardHeldSince  sim s or -1 (anti-turtle; also for the view)
  * @property {number}  knockdowns      per MATCH
  * @property {DownState|null} down
- * @property {number}  points          total damage dealt (D5)
+ * @property {number}  points          100 × damage dealt / opponent.maxHp, overkill excluded, 0.1 steps (D9)
  * @property {FighterStats} stats
  */
 
@@ -165,7 +178,7 @@ export {};
  * @property {'circle'|'telegraph'|'attack'|'recover'|'hurt'|'knockdown'|'getup'} state   OPP_STATE
  * @property {'rope_snap'|'swing_bridge'|'anchor_drop'|null} attack   set during telegraph/attack/recover
  * @property {'left'|'right'|null} side            her striking hand, from HER perspective
- * @property {{index:number, count:number}} combo  Rope Snap jab i of n; {0,1} otherwise
+ * @property {{index:number, count:number}} combo  strike i of n across the WHOLE sequence (D9); {0,1} when idle
  * @property {boolean} opening                     hits count as counters
  * @property {boolean} offBalance                  after Anchor Drop
  * @property {number}  staggerImmuneUntil
@@ -174,9 +187,14 @@ export {};
  * @property {number|null} contactAt               sim s her current strike visually connects
  * @property {'high'|'low'|'none'} guard           OPP_GUARD
  * @property {boolean} mitts                       practice card
+ * @property {boolean} feint                       D9: the current telegraph is a feint (bots must NOT read it)
+ * @property {boolean} covering                    D9: free hits used up; guard high for the rest of the window
+ * @property {number}  freeHits                    D9: clean hits left in the current open window
+ * @property {{kind:'single'|'feint'|'punish'|'combo', combo:null|'snap_drop'|'bridge_snap'|'double_bridge'}} sequence
+ *           D9: the sequence she is in (bots must NOT read it)
  * @property {number}  knockdowns                  per MATCH
  * @property {DownState|null} down
- * @property {number}  points
+ * @property {number}  points                      100 × damage dealt / player.maxHp (D9)
  */
 
 /**
@@ -216,7 +234,7 @@ export {};
 // | phase          | from, to                                                         | every phase change
 // | round_start    | n                                                                | pre-round countdown ends, clock starts
 // | round_end      | n                                                                | the round clock reaches 0
-// | match_end      | winner, method                                                   | match decided
+// | match_end      | winner, method, points:{player, opponent}                        | match decided (points in %, D9)
 // | punch_thrown   | id, hand, punchType, power, inferred                             | player punch accepted, before resolution
 // | punch_rejected | id, hand, reason:'gassed'                                        | punch received while gassed (no stamina cost)
 // | hit            | by:'player', hand, punchType, power, damage, counter, interrupt  | a player punch lands on Tamsin
@@ -225,14 +243,18 @@ export {};
 // |                |                                                                  | by:'opponent' → player blocked attack (cost paid by player)
 // | whiff          | by:'player', id, hand, punchType                                 | punch out of range or nothing to hit
 // | guard_broken   | until                                                            | player's guard broken
-// | telegraph      | attack, side, windup, comboIndex, comboCount                     | wind-up starts (audio/glow key off attack)
+// | telegraph      | attack, side, windup, comboIndex, comboCount, feint, combo,      | wind-up starts (audio/glow key off attack);
+// |                | afterFeint                                                       | comboIndex/Count span the whole sequence (D9)
 // | strike         | attack, side, comboIndex                                         | at contactAt (outcome follows at contact + impactDelay)
 // | stagger        | who, dur, interrupt                                              | stagger begins (interrupt: 1 s)
-// | opening        | dur                                                              | her recover opening starts
+// | opening        | dur, freeHits                                                    | her recover opening starts
 // | gassed         | until                                                            | player stamina hits 0
 // | knockdown      | who, count                                                       | count = this fighter's knockdown number (1 or 2)
 // | count          | who, n                                                           | each count tick during a knockdown
 // | getup          | who, hp                                                          | auto get-up at count 8
+// | feint_cancel   | attack, side                                                     | a feinted wind-up is cancelled (D9)
+// | cover          | reason:'recover'|'hurt'|'circle'|'feint'                         | she covers up: free hits used up, or after a feint
+// | pressure       | on                                                               | player.pressured changes (D9a); TA: bark + jeer on
 
 /** @typedef {'player'|'opponent'} Who */
 /** @typedef {'left'|'right'} Hand */
@@ -241,7 +263,7 @@ export {};
 /** @typedef {{type:'phase', t:number, from:string, to:string}} PhaseEvent */
 /** @typedef {{type:'round_start', t:number, n:number}} RoundStartEvent */
 /** @typedef {{type:'round_end', t:number, n:number}} RoundEndEvent */
-/** @typedef {{type:'match_end', t:number, winner:Who, method:'ko'|'points'}} MatchEndEvent */
+/** @typedef {{type:'match_end', t:number, winner:Who, method:'ko'|'points', points:{player:number, opponent:number}}} MatchEndEvent */
 /** @typedef {{type:'punch_thrown', t:number, id:number, hand:Hand, punchType:string, power:number, inferred:boolean}} PunchThrownEvent */
 /** @typedef {{type:'punch_rejected', t:number, id:number, hand:Hand, reason:'gassed'}} PunchRejectedEvent */
 /** @typedef {{type:'hit', t:number, by:'player', hand:Hand, punchType:string, power:number, damage:number, counter:boolean, interrupt:boolean}} HitEvent */
@@ -249,19 +271,23 @@ export {};
 /** @typedef {{type:'blocked', t:number, by:Who, hand:Hand, punchType:string|null, attack:Attack|null, staminaCost:number}} BlockedEvent */
 /** @typedef {{type:'whiff', t:number, by:'player', id:number, hand:Hand, punchType:string}} WhiffEvent */
 /** @typedef {{type:'guard_broken', t:number, until:number}} GuardBrokenEvent */
-/** @typedef {{type:'telegraph', t:number, attack:Attack, side:Hand, windup:number, comboIndex:number, comboCount:number}} TelegraphEvent */
+/** @typedef {'snap_drop'|'bridge_snap'|'double_bridge'} ComboName */
+/** @typedef {{type:'telegraph', t:number, attack:Attack, side:Hand, windup:number, comboIndex:number, comboCount:number, feint:boolean, combo:ComboName|null, afterFeint:boolean}} TelegraphEvent */
 /** @typedef {{type:'strike', t:number, attack:Attack, side:Hand, comboIndex:number}} StrikeEvent */
 /** @typedef {{type:'stagger', t:number, who:Who, dur:number, interrupt:boolean}} StaggerEvent */
-/** @typedef {{type:'opening', t:number, dur:number}} OpeningEvent */
+/** @typedef {{type:'opening', t:number, dur:number, freeHits:number}} OpeningEvent */
 /** @typedef {{type:'gassed', t:number, until:number}} GassedEvent */
 /** @typedef {{type:'knockdown', t:number, who:Who, count:number}} KnockdownEvent */
 /** @typedef {{type:'count', t:number, who:Who, n:number}} CountEvent */
 /** @typedef {{type:'getup', t:number, who:Who, hp:number}} GetupEvent */
+/** @typedef {{type:'feint_cancel', t:number, attack:Attack, side:Hand}} FeintCancelEvent */
+/** @typedef {{type:'cover', t:number, reason:'recover'|'hurt'|'circle'|'feint'}} CoverEvent */
+/** @typedef {{type:'pressure', t:number, on:boolean}} PressureEvent */
 
 /**
  * @typedef {PhaseEvent|RoundStartEvent|RoundEndEvent|MatchEndEvent|PunchThrownEvent|PunchRejectedEvent|
  *   HitEvent|PlayerHitEvent|BlockedEvent|WhiffEvent|GuardBrokenEvent|TelegraphEvent|StrikeEvent|
- *   StaggerEvent|OpeningEvent|GassedEvent|KnockdownEvent|CountEvent|GetupEvent} GameEvent
+ *   StaggerEvent|OpeningEvent|GassedEvent|KnockdownEvent|CountEvent|GetupEvent|FeintCancelEvent|CoverEvent|PressureEvent} GameEvent
  */
 
 // ───────────────────────────────────────────── APIs (§3.7–3.9)
@@ -272,8 +298,11 @@ export {};
  *   {type:'goto_phase', phase:string} |
  *   {type:'force_attack', attack:Attack, side?:Hand, combo?:number} |
  *   {type:'debug_set', path:string, value:any} |
- *   {type:'set_round', n:number}} SimCommand
- * The last four are test/debug only (ignored with a console warning unless allowDebug).
+ *   {type:'set_round', n:number} |
+ *   {type:'force_sequence', kind:'single'|'feint'|'combo', attack?:Attack, combo?:ComboName, side?:Hand, punish?:boolean}} SimCommand
+ * goto_phase, force_attack, debug_set, set_round and force_sequence are test/debug only (ignored with a console
+ * warning unless allowDebug). force_sequence (D9): kind 'feint' needs attack swing_bridge|anchor_drop and takes
+ * punish (force the punish roll); kind 'combo' takes combo; kind 'single' takes attack (like force_attack).
  */
 
 /**

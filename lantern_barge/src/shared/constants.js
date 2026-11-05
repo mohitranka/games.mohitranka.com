@@ -48,6 +48,12 @@ export const ATTACK = Object.freeze({
 
 export const OPP_GUARD = Object.freeze({ HIGH: 'high', LOW: 'low', NONE: 'none' });
 
+// D9: what kind of sequence she is in, and which combo
+export const SEQUENCE = Object.freeze({ SINGLE: 'single', FEINT: 'feint', PUNISH: 'punish', COMBO: 'combo' });
+export const COMBO = Object.freeze({ SNAP_DROP: 'snap_drop', BRIDGE_SNAP: 'bridge_snap', DOUBLE_BRIDGE: 'double_bridge' });
+// D9: why she covered up (free hits used up in that window, or the guard after a feint cancel)
+export const COVER_REASON = Object.freeze({ RECOVER: 'recover', HURT: 'hurt', CIRCLE: 'circle', FEINT: 'feint' });
+
 export const RESULT_METHOD = Object.freeze({ KO: 'ko', POINTS: 'points' });
 
 export const INPUT_EVENT = Object.freeze({ PUNCH: 'punch', GUARD: 'guard' });
@@ -73,6 +79,9 @@ export const EVENT = Object.freeze({
   KNOCKDOWN: 'knockdown',
   COUNT: 'count',
   GETUP: 'getup',
+  FEINT_CANCEL: 'feint_cancel', // D9
+  COVER: 'cover', // D9
+  PRESSURE: 'pressure', // D9a
 });
 export const EVENT_TYPES = Object.freeze(Object.values(EVENT));
 
@@ -91,12 +100,14 @@ export const COMMAND = Object.freeze({
   FORCE_ATTACK: 'force_attack',
   DEBUG_SET: 'debug_set',
   SET_ROUND: 'set_round',
+  FORCE_SEQUENCE: 'force_sequence', // D9
 });
 export const DEBUG_COMMANDS = Object.freeze([
   COMMAND.GOTO_PHASE,
   COMMAND.FORCE_ATTACK,
   COMMAND.DEBUG_SET,
   COMMAND.SET_ROUND,
+  COMMAND.FORCE_SEQUENCE,
 ]);
 
 export const CALIB_STEP = Object.freeze({

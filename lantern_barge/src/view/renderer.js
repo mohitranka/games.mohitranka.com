@@ -56,7 +56,12 @@ export function createRenderer({ canvas, hudRoot }) {
   const shake = createShake();
   const vignette = createVignette(hudRoot);
 
-  const ctx = { lastHit: null, lastBlock: null, lastPunch: null };
+  const ctx = { lastHit: null, lastBlock: null, lastPunch: null, cover: null, feintCancel: null };
+  const cueLog = []; // D9 cue names, newest last (tests / debug)
+  const cue = (t, name) => {
+    cueLog.push({ t, cue: name });
+    if (cueLog.length > 50) cueLog.shift();
+  };
   let impactT = -Infinity;
   let impactScale = 0.4;
   let lastSimTime = -1;
@@ -81,7 +86,8 @@ export function createRenderer({ canvas, hudRoot }) {
     particles.reset();
     gloves.reset();
     hud.reset();
-    ctx.lastHit = ctx.lastBlock = ctx.lastPunch = null;
+    ctx.lastHit = ctx.lastBlock = ctx.lastPunch = ctx.cover = ctx.feintCancel = null;
+    cueLog.length = 0;
     impactT = -Infinity;
   }
 
@@ -130,12 +136,34 @@ export function createRenderer({ canvas, hudRoot }) {
         got.push('gloves-down');
         break;
       case 'strike':
-        // impact frame: a short white pop on the screen edge, before the outcome lands
-        vignette.flash(e.t, e.attack === 'anchor_drop' ? 'rgba(255,90,60,0.5)' : 'rgba(255,240,220,0.35)');
-        got.push('pose', 'flash');
+        // the swing reaches contact (pose only). No screen flash here: the outcome (player_hit / blocked) brings the
+        // impact feedback, and a late interrupt (BUG-009) can still cancel the strike up to 100 ms after this event.
+        got.push('pose');
         break;
-      case 'telegraph':
+      case 'telegraph': {
         got.push('pose', 'glow');
+        const first = !(e.comboIndex > 0);
+        if (first && e.feint !== true) {
+          // D9 back-foot plant: a heel drop that kicks up a little dust from the deck
+          tamsin.footWorld('right', _head);
+          particles.burst(e.t, _head, _dir.set(0, 0.7, 0), 16, 0xd8c09a, 0.9, 0.55);
+          shake.shake(e.t, 1, 0.08);
+          cue(e.t, 'plant');
+        }
+        if (e.feint === true) cue(e.t, 'feint-glow');
+        if (!first && e.combo) cue(e.t, 'chain');
+        if (e.afterFeint) cue(e.t, 'punish');
+        break;
+      }
+      case 'feint_cancel':
+        ctx.feintCancel = { t: e.t, from: last.pose };
+        cue(e.t, 'snap-back');
+        got.push('pose');
+        break;
+      case 'cover':
+        ctx.cover = { t: e.t };
+        cue(e.t, 'cover');
+        got.push('pose');
         break;
       case 'stagger':
       case 'opening':
@@ -259,9 +287,12 @@ export function createRenderer({ canvas, hudRoot }) {
     debug() {
       const p = last.pose;
       return {
-        responses: { ...responses }, hud: hud.debug(), vignette: vignette.value, gloves: gloves.debug(),
+        responses: { ...responses }, cues: cueLog.slice(), hud: hud.debug(), vignette: vignette.value, gloves: gloves.debug(),
         presTime: last.presTime, frozen: last.frozen,
-        pose: p && { lHand: p.lHand, rHand: p.rHand, lGlow: p.lGlow.amount, rGlow: p.rGlow.amount, fall: p.fall, mitts: p.mitts },
+        pose: p && {
+          lHand: p.lHand, rHand: p.rHand, rFoot: p.rFoot, lGlow: p.lGlow.amount, rGlow: p.rGlow.amount,
+          fall: p.fall, mitts: p.mitts, roll: p.roll, headPitch: p.headPitch,
+        },
       };
     },
     dispose() {

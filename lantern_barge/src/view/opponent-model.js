@@ -293,5 +293,10 @@ export function createOpponentModel(glowTex) {
     return out.setFromMatrixPosition(arms[side].glove.matrixWorld);
   }
 
-  return { root: base, setPose, headWorld, gloveWorld };
+  /** World position of a foot (dust for the D9 back-foot plant). */
+  function footWorld(side, out) {
+    return out.copy(legs[side].foot).applyMatrix4(base.matrixWorld);
+  }
+
+  return { root: base, setPose, headWorld, gloveWorld, footWorld };
 }

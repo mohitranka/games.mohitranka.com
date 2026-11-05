@@ -201,8 +201,26 @@ function telegraphPose(o, tIn) {
     if (c) p[key] = arc(wind[key], c, hit[key], u);
   }
   const first = !(o.combo?.index > 0);
-  const amount = first ? 0.45 + 0.55 * clamp01(tIn / Math.max(0.05, W - throwS)) : 0.5;
-  const pop = Math.max(0, 1 - tIn / 0.18) * (first ? 1 : 0.5);
+  const feint = o.feint === true;
+  // D9 tell #1: every REAL first wind-up starts with a back-foot plant (rear = her right foot, orthodox).
+  // Feints skip it. The plant lands inside the first 100 ms and the rear foot stays planted.
+  if (first && !feint) {
+    const plant = easeOut(clamp01(tIn / 0.08));
+    const dip = Math.sin(Math.PI * clamp01(tIn / 0.14));
+    p.rFoot = [p.rFoot[0] - 0.02 * plant, p.rFoot[1], p.rFoot[2] - 0.09 * plant];
+    p.hipY -= 0.06 * dip; // the body settles onto the planted foot (visible even when the feet are below the gloves)
+    p.lean -= 0.03 * plant;
+  }
+  // D9 chain cue: a combo follow-up rolls the shoulders through from the last strike into the next one.
+  if (!first && o.sequence?.kind === 'combo') {
+    const u = clamp01(tIn / Math.max(0.05, W - throwS));
+    const roll = Math.sin(Math.PI * u);
+    p.roll += -s * 0.3 * roll;
+    p.twist += s * 0.25 * roll;
+    p.headRoll += s * 0.12 * roll;
+  }
+  const amount = (first ? 0.45 + 0.55 * clamp01(tIn / Math.max(0.05, W - throwS)) : 0.5) * (feint ? 0.5 : 1); // D9 tell #2
+  const pop = Math.max(0, 1 - tIn / 0.18) * (first ? 1 : 0.5) * (feint ? 0.5 : 1);
   const g = glowFor(o.attack, amount, pop);
   if (s > 0) p.lGlow = g;
   else p.rGlow = g;
@@ -395,6 +413,32 @@ export function computeOpponentPose(state, t, ctx = {}) {
         p.headPitch = 0.35;
         p.z = -0.3;
       }
+    }
+  }
+
+  // D9 cover-up: gloves tight at the temples, chin tucked, elbows in, while opponent.covering is true
+  if (o.covering && o.state !== 'knockdown' && o.state !== 'getup') {
+    const k = ctx.cover ? easeOut(clamp01((t - ctx.cover.t) / 0.1)) : 1;
+    const c = { ...p };
+    c.lHand = [0.12, 1.79, 0.13];
+    c.rHand = [-0.12, 1.79, 0.13];
+    c.lPole = [0.25, -1, 0.2];
+    c.rPole = [-0.25, -1, 0.2];
+    c.headPitch = 0.28;
+    c.headYaw = 0;
+    c.hipY = p.hipY - 0.04;
+    c.lean = Math.max(p.lean, 0.1);
+    c.twist = 0;
+    c.lGlow = c.rGlow = NO_GLOW;
+    p = { ...lerpPose(p, c, k), lGlow: NO_GLOW, rGlow: NO_GLOW, shimmer: 0 };
+  }
+
+  // D9 feint_cancel: blend from the abandoned wind-up into whatever she is doing now within ~100 ms
+  if (ctx.feintCancel?.from) {
+    const age = t - ctx.feintCancel.t;
+    if (age >= 0 && age < 0.1) {
+      const glows = { lGlow: p.lGlow, rGlow: p.rGlow };
+      p = { ...lerpPose(ctx.feintCancel.from, p, easeOut(age / 0.1)), ...glows };
     }
   }
 

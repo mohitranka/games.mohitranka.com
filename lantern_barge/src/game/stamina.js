@@ -33,7 +33,8 @@ export function spend(w, amount) {
 }
 
 /**
- * 14/s starting 700 ms after the last punch or block, half rate while the effective guard is up,
+ * 14/s starting 700 ms after the last punch or block, half rate while the effective guard is up (quarter
+ * rate under pressure, D9a),
  * paused while gassed and resuming immediately when it ends.
  */
 export function regen(w, dt) {
@@ -44,7 +45,8 @@ export function regen(w, dt) {
   const delayDone = t - w.ctx.lastActionT >= T.regenDelay - EPS;
   const gassedJustEnded = p.gassedUntil > w.ctx.lastActionT; // gassed after the last action, and now over
   if (!delayDone && !gassedJustEnded) return;
-  const rate = T.regenRate * (p.guard === 'full' ? T.regenGuardFactor : 1);
+  const guardFactor = p.pressured ? T.pressureRegenGuardFactor : T.regenGuardFactor; // D9a
+  const rate = T.regenRate * (p.guard === 'full' ? guardFactor : 1);
   p.stamina = Math.min(p.maxStamina, p.stamina + rate * dt);
 }
 

@@ -23,8 +23,16 @@ const RECOVER = { rope_snap: 0.6, swing_bridge: 0.9, anchor_drop: 1.4 };
 const DAMAGE = { rope_snap: [5, 0], swing_bridge: [12, 2], anchor_drop: [22, 5] }; // [hit, blocked]
 const BLOCK_COST = { rope_snap: 3, swing_bridge: 8, anchor_drop: 30 };
 const SHAKE = { rope_snap: 1, swing_bridge: 2, anchor_drop: 3 };
-const TELEGRAPH_GUARD = { rope_snap: 'high', swing_bridge: 'low', anchor_drop: 'none' };
 const DEFAULT_SIDE = { rope_snap: 'left', swing_bridge: 'left', anchor_drop: 'right' };
+const COUNTER_MULT = 1.25; // D9
+const HOOK_VS_HIGH = 0.5; // D9
+const REST_HEAL = { player: 15, opponent: 25 }; // D9
+// D9 combos: strikes with the contact-to-contact gap before each follow-up
+const COMBOS = {
+  snap_drop: [{ attack: 'rope_snap', side: 'left' }, { attack: 'anchor_drop', side: 'right', gap: 0.9 }],
+  bridge_snap: [{ attack: 'swing_bridge', side: 'right' }, { attack: 'rope_snap', side: 'left', gap: 0.3 }, { attack: 'rope_snap', side: 'left', gap: 0.3 }],
+  double_bridge: [{ attack: 'swing_bridge', side: 'left' }, { attack: 'swing_bridge', side: 'right', gap: 0.5 }],
+};
 
 // Autoplay choreography per round; `at` is round-clock elapsed seconds.
 // attack: started when she is next in circle. ghost: a scripted player punch. guard: her circle guard.
@@ -46,16 +54,18 @@ const SCRIPT = [
     { at: 2.0, ghost: g('left', 'straight', 0.6, 0.05) }, // whiff (out of aim zone)
     { at: 2.1, set: { 'opponent.hp': 1 } },
     { at: 2.1, ghost: g('left', 'hook', 0.8) }, // knockdown -> count 1..8 -> getup
-    { at: 3.0, attack: 'swing_bridge', side: 'left', ghostGuard: [true] }, // blocked
+    // D9: a feinted Swing Bridge, cancelled at 50 %, punished by a jab 450 ms after the cancel (blocked)
+    { at: 3.0, attack: 'swing_bridge', side: 'left', kind: 'feint', punish: true, ghostGuard: [true] },
   ],
   [
+    { at: 0.05, pressure: true }, // D9a: turtle pressure on; the counters in this Recover turn it off
     { at: 0.1, attack: 'anchor_drop', side: 'right', ghostGuard: [true] },
     { at: 1.25, set: { 'player.stamina': 20 } }, // block with < 30 stamina -> guard_broken
     { at: 1.55, set: { 'player.stamina': 15 } },
     { at: 1.6, ghost: g('left', 'straight', 1) },
     { at: 1.75, ghost: g('right', 'straight', 1) }, // -> gassed
     { at: 1.9, ghost: g('left', 'straight', 1) }, // -> punch_rejected
-    { at: 2.6, attack: 'rope_snap', side: 'left', count: 3 }, // player knockdown
+    { at: 2.6, kind: 'combo', combo: 'bridge_snap' }, // D9 combo; its first hit knocks the player down
   ],
 ];
 
@@ -87,6 +97,7 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false }
     return {
       countdownT0: 0, roundElapsed: 0, scriptIdx: 0, circleGuard: 'high',
       ghostGuard: [], resolveAt: null, rawTicks: 0, lastActionT: -Infinity, countT0: 0,
+      seq: null, dealt: { player: 0, opponent: 0 },
     };
   }
   ctx = freshCtx();
@@ -111,7 +122,8 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false }
     if (to === PHASE.FIGHT) enterRound();
     if (to === PHASE.ROUND_END) {
       state.round.restLeft = T.rest;
-      for (const f of [state.player, state.opponent]) f.hp = Math.min(f.maxHp, f.hp + 15);
+      state.player.hp = Math.min(state.player.maxHp, state.player.hp + REST_HEAL.player);
+      state.opponent.hp = Math.min(state.opponent.maxHp, state.opponent.hp + REST_HEAL.opponent);
       state.player.stamina = state.player.maxStamina;
       state.player.gassedUntil = -1;
     }
@@ -155,7 +167,7 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false }
     state.round.clockRunning = false;
     state.result = { winner, method };
     setPhase(PHASE.MATCH_END);
-    emit(EVENT.MATCH_END, { winner, method });
+    emit(EVENT.MATCH_END, { winner, method, points: { player: state.player.points, opponent: state.opponent.points } });
   }
 
   function softResetToBoot() {
@@ -172,9 +184,27 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false }
     Object.assign(o, {
       state: OPP_STATE.CIRCLE, attack: null, side: null, combo: { index: 0, count: 1 },
       opening: false, offBalance: false, contactAt: null, guard: ctx.circleGuard,
-      stageStart: now(), stageDur: 0,
+      stageStart: now(), stageDur: 0, feint: false, covering: false,
+      freeHits: ctx.circleGuard === 'low' ? 1 : 0, sequence: { kind: 'single', combo: null },
     });
     ctx.resolveAt = null;
+    ctx.seq = null;
+  }
+
+  /** D9a: pressure on/off (the real rule lives in game/pressure.js; the stub scripts it). */
+  function setPressure(on) {
+    if (state.player.pressured === on) return;
+    state.player.pressured = on;
+    emit(EVENT.PRESSURE, { on });
+  }
+
+  /** D9: free hits used up → she covers up (guard high for the rest of the window). */
+  function coverUp(reason) {
+    const o = state.opponent;
+    o.covering = true;
+    o.guard = 'high';
+    if (reason === 'circle') ctx.circleGuard = 'high';
+    emit(EVENT.COVER, { reason });
   }
 
   function setStage(st, dur) {
@@ -186,23 +216,47 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false }
 
   function telegraph(windup) {
     const o = state.opponent;
+    const q = ctx.seq;
     setStage(OPP_STATE.TELEGRAPH, windup);
     o.contactAt = now() + windup;
-    o.guard = TELEGRAPH_GUARD[o.attack];
+    o.guard = 'high'; // D9: high during every telegraph; an Anchor Drop opens at its interrupt window
+    o.covering = false;
+    o.freeHits = 0;
     emit(EVENT.TELEGRAPH, {
       attack: o.attack, side: o.side, windup, comboIndex: o.combo.index, comboCount: o.combo.count,
+      feint: o.feint, combo: q?.combo ?? null, afterFeint: !!q?.afterFeint,
     });
   }
 
-  function startAttack(attack, side, count = 1, ghostGuard = []) {
+  /**
+   * Start a sequence (D9). kind: 'single' (rope snap may have count jabs), 'feint' (swing_bridge | anchor_drop,
+   * optional punish), 'punish' (rope snap after a feint), 'combo' (snap_drop | bridge_snap | double_bridge).
+   */
+  function startSequence({ kind = 'single', attack, side, count = 1, combo = null, punish = false, afterFeint = false, windup, ghostGuard = [] }) {
     const o = state.opponent;
     if (o.state !== OPP_STATE.CIRCLE) return false;
-    o.attack = attack;
-    o.side = side ?? DEFAULT_SIDE[attack];
-    o.combo = { index: 0, count: attack === ATTACK.ROPE_SNAP ? Math.max(1, Math.min(3, count)) : 1 };
+    if (o.covering && o.stageDur > 0 && now() < o.stageStart + o.stageDur) return false; // post-feint cover (300 ms)
+    let strikes;
+    if (kind === 'combo') strikes = COMBOS[combo].map((s) => ({ ...s }));
+    else {
+      const n = attack === ATTACK.ROPE_SNAP ? Math.max(1, Math.min(3, count)) : 1;
+      strikes = Array.from({ length: n }, (_, i) => ({ attack, side: side ?? DEFAULT_SIDE[attack], gap: i ? null : undefined }));
+    }
+    ctx.seq = { kind, combo: kind === 'combo' ? combo : null, strikes, punish, afterFeint, cancelAt: null };
     ctx.ghostGuard = ghostGuard;
-    telegraph(WINDUP[attack][roundIdx()]);
+    o.sequence = { kind, combo: ctx.seq.combo };
+    o.feint = kind === 'feint';
+    o.attack = strikes[0].attack;
+    o.side = strikes[0].side;
+    o.combo = { index: 0, count: strikes.length };
+    const w = windup ?? WINDUP[o.attack][roundIdx()];
+    telegraph(w);
+    if (o.feint) ctx.seq.cancelAt = now() + (o.attack === ATTACK.SWING_BRIDGE ? 0.5 * w : w - 0.7);
     return true;
+  }
+
+  function startAttack(attack, side, count = 1, ghostGuard = []) {
+    return startSequence({ kind: 'single', attack, side, count, ghostGuard });
   }
 
   function resolveStrike() {
@@ -232,7 +286,10 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false }
   function applyDamage(target, attacker, dmg) {
     const applied = r2(Math.min(target.hp, dmg));
     target.hp = r2(target.hp - applied);
-    attacker.points = r2(attacker.points + applied);
+    const key = attacker === state.player ? 'player' : 'opponent';
+    ctx.dealt[key] += applied;
+    // D9: points = 100 × damage dealt / the other fighter's maxHp, overkill excluded, 0.1 steps
+    attacker.points = Math.round((1000 * ctx.dealt[key]) / target.maxHp) / 10;
     return applied;
   }
 
@@ -247,9 +304,30 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false }
     const t = now();
     switch (o.state) {
       case OPP_STATE.CIRCLE:
-        o.guard = ctx.circleGuard;
+        if (o.covering && o.stageDur > 0 && t >= o.stageStart + o.stageDur - 1e-9) {
+          o.covering = false; // the post-feint cover lasts 300 ms
+          o.stageDur = 0;
+        }
+        o.guard = o.covering ? 'high' : ctx.circleGuard;
         break;
       case OPP_STATE.TELEGRAPH:
+        if (o.feint && ctx.seq && t >= ctx.seq.cancelAt - 1e-9) {
+          // D9: the feint is cancelled before any interrupt window; high guard for 300 ms, maybe a punish
+          const { attack, side } = o;
+          const punish = ctx.seq.punish;
+          emit(EVENT.FEINT_CANCEL, { attack, side });
+          toCircle();
+          if (punish) {
+            startSequence({ kind: 'punish', attack: ATTACK.ROPE_SNAP, side: 'left', count: 1, afterFeint: true, windup: 0.45, ghostGuard: ctx.ghostGuard });
+          } else {
+            coverUp('feint');
+            o.stageDur = 0.3;
+          }
+          break;
+        }
+        if (o.attack === ATTACK.ANCHOR_DROP && !o.feint && o.contactAt !== null && t >= o.contactAt - 0.6 - 1e-9) {
+          o.guard = 'none'; // the interrupt window is open
+        }
         if (o.contactAt !== null && t >= o.contactAt - 1e-9) {
           emit(EVENT.STRIKE, { attack: o.attack, side: o.side, comboIndex: o.combo.index });
           setStage(OPP_STATE.ATTACK, T.strikeHold);
@@ -268,17 +346,25 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false }
           }
         }
         if (t >= o.stageStart + o.stageDur - 1e-9 && ctx.resolveAt === null) {
-          if (o.attack === ATTACK.ROPE_SNAP && o.combo.index + 1 < o.combo.count) {
+          const q = ctx.seq;
+          const next = q?.strikes[o.combo.index + 1];
+          if (next) {
             o.combo = { index: o.combo.index + 1, count: o.combo.count };
-            telegraph(T.followJab);
+            o.attack = next.attack;
+            o.side = next.side;
+            // combos: contact-to-contact gap; repeated jabs: the follow-jab wind-up
+            telegraph(next.gap ? Math.max(0.05, next.gap - T.strikeHold) : T.followJab);
           } else {
-            const dur = RECOVER[o.attack];
+            const isCombo = q?.kind === 'combo';
+            const dur = RECOVER[o.attack] + (isCombo ? 0.3 : 0);
             setStage(OPP_STATE.RECOVER, dur);
             o.opening = true;
             o.offBalance = o.attack === ATTACK.ANCHOR_DROP;
             o.guard = 'none';
+            o.covering = false;
             o.contactAt = null;
-            emit(EVENT.OPENING, { dur });
+            o.freeHits = (o.attack === ATTACK.ANCHOR_DROP ? 2 : 1) + (isCombo ? 1 : 0);
+            emit(EVENT.OPENING, { dur, freeHits: o.freeHits });
           }
         }
         break;
@@ -319,8 +405,8 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false }
       return;
     }
     f.down = null;
-    f.hp = 50;
-    emit(EVENT.GETUP, { who, hp: 50 });
+    f.hp = f.maxHp / 2; // D9: get-up at 50 % of max HP (player 50, Tamsin 125)
+    emit(EVENT.GETUP, { who, hp: f.hp });
     state.round.clockRunning = true;
     if (who === 'opponent') setStage(OPP_STATE.GETUP, T.getup);
   }
@@ -361,23 +447,25 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false }
         power >= 0.5 && t >= o.contactAt - 0.6 && t <= o.contactAt - 0.08) {
       M = 2;
       interrupt = true;
-    } else if (o.state === OPP_STATE.RECOVER) {
-      M = 1.5;
-      counter = true;
-    } else if ((o.state === OPP_STATE.CIRCLE || o.state === OPP_STATE.TELEGRAPH) && o.guard === 'high') {
+    } else if (o.guard === 'high') {
+      // her high guard (circle, every telegraph, or covering up): straights blocked, hooks chip ×0.5 (D9)
       if (punchType === 'straight') {
         p.stats.blocked += 1;
         emit(EVENT.BLOCKED, { by: 'player', hand, punchType, attack: null, staminaCost: 0 });
         return;
       }
-      M = 0.7;
+      M = HOOK_VS_HIGH;
       clean = false;
+    } else if (o.state === OPP_STATE.RECOVER) {
+      M = COUNTER_MULT;
+      counter = true;
     }
     const base = punchType === 'hook' ? 10 : 7;
     const dmg = base * (0.5 + 0.5 * power) * (p.fatigued ? 0.5 : 1) * M;
     const applied = applyDamage(o, p, dmg);
     p.stats.landed += 1;
     if (counter) p.stats.counters += 1;
+    if (counter || interrupt) setPressure(false); // D9a: any counter or interrupt ends pressure
     if (interrupt) p.stats.interrupts += 1;
     emit(EVENT.HIT, { by: 'player', hand, punchType, power, damage: applied, counter, interrupt });
     if (o.hp <= 0) {
@@ -386,9 +474,21 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false }
     }
     if (interrupt) {
       emit(EVENT.STAGGER, { who: 'opponent', dur: T.interruptStagger, interrupt: true });
-      toCircle();
+      toCircle(); // an interrupt ends the whole sequence (D9)
       setStage(OPP_STATE.HURT, T.interruptStagger);
-    } else if (clean && o.state === OPP_STATE.CIRCLE && t >= o.staggerImmuneUntil) {
+      o.guard = 'none';
+      o.freeHits = 2; // D9: 2 free hits in the Hurt after an interrupt
+      return;
+    }
+    const wasCircleLow = o.state === OPP_STATE.CIRCLE && o.guard === 'low';
+    if (clean && o.freeHits > 0) {
+      o.freeHits -= 1;
+      if (o.freeHits === 0) {
+        coverUp(o.state === OPP_STATE.RECOVER ? 'recover' : o.state === OPP_STATE.HURT ? 'hurt' : 'circle');
+        return;
+      }
+    }
+    if (clean && wasCircleLow && t >= o.staggerImmuneUntil) {
       emit(EVENT.STAGGER, { who: 'opponent', dur: T.hurt, interrupt: false });
       setStage(OPP_STATE.HURT, T.hurt);
       o.guard = 'low';
@@ -416,11 +516,18 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false }
     const entries = SCRIPT[roundIdx()];
     while (ctx.scriptIdx < entries.length && entries[ctx.scriptIdx].at <= ctx.roundElapsed + 1e-9) {
       const e = entries[ctx.scriptIdx];
-      if (e.attack) {
-        if (!startAttack(e.attack, e.side, e.count, e.ghostGuard)) return; // wait until she is in circle
+      if (e.attack || e.combo) {
+        const ok = startSequence({ kind: e.kind ?? 'single', attack: e.attack, side: e.side, count: e.count, combo: e.combo, punish: e.punish, ghostGuard: e.ghostGuard });
+        if (!ok) return; // wait until she is in circle
+      } else if (autoplay && e.pressure !== undefined) {
+        setPressure(e.pressure);
       } else if (e.guard) {
         ctx.circleGuard = e.guard;
-        if (state.opponent.state === OPP_STATE.CIRCLE) state.opponent.guard = e.guard;
+        if (state.opponent.state === OPP_STATE.CIRCLE) {
+          state.opponent.guard = e.guard;
+          state.opponent.freeHits = e.guard === 'low' ? 1 : 0; // D9: 1 free hit per low-guard spell
+          state.opponent.covering = false;
+        }
       } else if (autoplay && e.set) {
         for (const [k, v] of Object.entries(e.set)) setPath(state, k, v);
       } else if (autoplay && e.ghost) {
@@ -523,6 +630,18 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false }
         toCircle();
         startAttack(cmd.attack, cmd.side, cmd.combo ?? 1);
         break;
+      case COMMAND.FORCE_SEQUENCE: {
+        if (state.phase !== PHASE.FIGHT) break;
+        if (state.round.countdown !== null) startClock();
+        toCircle();
+        const kind = cmd.kind ?? 'single';
+        if (kind === 'combo' && !COMBOS[cmd.combo]) throw new Error(`force_sequence: unknown combo ${cmd.combo}`);
+        if (kind === 'feint' && cmd.attack !== ATTACK.SWING_BRIDGE && cmd.attack !== ATTACK.ANCHOR_DROP) {
+          throw new Error('force_sequence: only swing_bridge and anchor_drop are feinted');
+        }
+        startSequence({ kind, attack: cmd.attack ?? ATTACK.ROPE_SNAP, side: cmd.side, combo: cmd.combo, punish: !!cmd.punish });
+        break;
+      }
       case COMMAND.DEBUG_SET: setPath(state, cmd.path, cmd.value); break;
       case COMMAND.SET_ROUND:
         state.round.n = cmd.n;

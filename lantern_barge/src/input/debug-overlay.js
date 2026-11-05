@@ -226,6 +226,8 @@ export function createDebugOverlay({ root, getSource, tuning, setTuning }) {
         `calib ${f.calibration.step ?? '-'} ${f.calibration.hint ?? ''} ${f.calibration.count}/${f.calibration.target} ` +
           `${f.calibration.meter ? `meter ${f.calibration.meter.value.toFixed(2)}/${f.calibration.meter.threshold.toFixed(2)}` : ''}` +
           `  spot ${f.spot.kGuardDrift === null ? '-' : f.spot.kGuardDrift.toFixed(3)}`,
+        `gesture ${f.gesture?.kind ?? '-'} ${f.gesture ? `${Math.round(f.gesture.progress * 100)}%` : ''}` +
+          `  available [${f.gesture?.available?.join(', ') ?? ''}]`,
       ];
       status.textContent = lines.join('\n');
       log.textContent = punches.map((p) => `${p.tCommit.toFixed(2)} ${p.hand} ${p.punchType} p=${p.power}${p.inferred ? ' (rescue)' : ''} onset→commit ${((p.tCommit - p.tOnset) * 1000).toFixed(0)} ms`).reverse().join('\n');

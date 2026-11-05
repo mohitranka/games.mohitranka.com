@@ -5,6 +5,7 @@ import { EVENT, PHASE, OPP_STATE } from '../shared/constants.js';
 import { createPlayer, createOpponent } from '../shared/fixtures.js';
 import { EPS } from './stamina.js';
 import { toCircle, updateOpponent } from './opponent-ai.js';
+import { restartPressure, updatePressure } from './pressure.js';
 
 /**
  * Legal phase changes, from the architecture §3.5 table (goto_phase, a debug command, may jump anywhere).
@@ -26,14 +27,15 @@ export const TRANSITIONS = Object.freeze([
 
 export function freshPlayer(T) {
   const p = createPlayer();
-  p.maxHp = p.hp = T.hpMax;
+  p.maxHp = p.hp = T.hpMax.player;
   p.maxStamina = p.stamina = T.staminaMax;
+  p.pressured = false; // D9a
   return p;
 }
 
 export function freshOpponent(T) {
   const o = createOpponent();
-  o.maxHp = o.hp = T.hpMax;
+  o.maxHp = o.hp = T.hpMax.opponent;
   return o;
 }
 
@@ -74,6 +76,7 @@ export function startMatch(w) {
   st.round.n = 1;
   st.round.of = w.T.roundCount;
   w.ctx.lastActionT = -Infinity;
+  w.ctx.dealt = { player: 0, opponent: 0 };
   enterFight(w);
 }
 
@@ -99,6 +102,7 @@ export function startClock(w) {
   r.countdown = null;
   r.clockRunning = true;
   w.emit(EVENT.ROUND_START, { n: r.n });
+  restartPressure(w); // D9a: the no-counter timer restarts at each round start
 }
 
 function endRound(w) {
@@ -111,9 +115,13 @@ function endRound(w) {
     setPhase(w, PHASE.ROUND_END);
     toCircle(w);
   } else {
-    // points = total damage dealt; a tie goes to the player (D5)
-    endMatch(w, st.player.points >= st.opponent.points ? 'player' : 'opponent', 'points');
+    endMatch(w, pointsWinner(st), 'points');
   }
+}
+
+/** Points are % of the opponent's max HP (D9); a tie goes to the player. */
+function pointsWinner(st) {
+  return st.player.points >= st.opponent.points ? 'player' : 'opponent';
 }
 
 export function endMatch(w, winner, method) {
@@ -122,14 +130,14 @@ export function endMatch(w, winner, method) {
   st.round.countdown = null;
   st.result = { winner, method };
   setPhase(w, PHASE.MATCH_END);
-  w.emit(EVENT.MATCH_END, { winner, method });
+  w.emit(EVENT.MATCH_END, { winner, method, points: { player: st.player.points, opponent: st.opponent.points } });
 }
 
-/** ROUND_END → FIGHT: +15 HP each (capped), stamina refilled, then round n+1 with its countdown. */
+/** ROUND_END → FIGHT: rest healing per fighter (D9: player +15, Tamsin +25, capped), stamina refilled. */
 function finishRest(w) {
   const st = w.state;
   const T = w.T;
-  for (const f of [st.player, st.opponent]) f.hp = Math.min(f.maxHp, f.hp + T.restHeal);
+  for (const who of ['player', 'opponent']) st[who].hp = Math.min(st[who].maxHp, st[who].hp + T.restHeal[who]);
   const p = st.player;
   p.stamina = p.maxStamina;
   p.gassedUntil = -1;
@@ -145,6 +153,7 @@ export function enterBoot(w) {
   st.player = freshPlayer(w.T);
   st.opponent = freshOpponent(w.T);
   st.result = { winner: null, method: null };
+  w.ctx.dealt = { player: 0, opponent: 0 };
   st.round = { n: 1, of: w.T.roundCount, timeLeft: w.T.roundLength, clockRunning: false, countdown: null, restLeft: null };
   st.practice = null;
   toCircle(w, { resetCooldown: true });
@@ -165,7 +174,7 @@ export function gotoPhase(w, phase) {
       toCircle(w);
       break;
     case PHASE.MATCH_END:
-      endMatch(w, st.player.points >= st.opponent.points ? 'player' : 'opponent', 'points');
+      endMatch(w, pointsWinner(st), 'points');
       break;
     default:
       console.warn(`[sim] goto_phase: unknown phase ${phase}`);
@@ -175,7 +184,7 @@ export function gotoPhase(w, phase) {
 // ───────────────────────────────────────────── knockdown sub-state (FIGHT)
 
 /**
- * HP reached 0. First knockdown of the match: count to 8, get up with 50 HP. Second: count to 10, KO.
+ * HP reached 0. First knockdown of the match: count to 8, get up at 50% of max HP. Second: count to 10, KO.
  * The round clock pauses for the count, so the bell can never ring mid-count.
  */
 export function knockdown(w, who) {
@@ -192,6 +201,8 @@ export function knockdown(w, who) {
     const o = st.opponent;
     o.state = OPP_STATE.KNOCKDOWN;
     o.guard = 'none';
+    o.covering = false;
+    o.freeHits = 0;
     o.stageStart = t;
     o.stageDur = countTarget(w, f) * w.T.countInterval;
   }
@@ -217,15 +228,18 @@ function updateKnockdown(w, who) {
     return;
   }
   f.down = null;
-  f.hp = T.getupHp;
+  f.hp = Math.round(T.getupHpFrac * f.maxHp);
   w.emit(EVENT.GETUP, { who, hp: f.hp });
   st.round.clockRunning = true;
+  restartPressure(w); // D9a: … and after each get-up
   if (who === 'opponent') {
     const o = st.opponent;
     o.state = OPP_STATE.GETUP;
     o.stageStart = st.time;
     o.stageDur = T.opponentGetupDur;
     o.guard = 'none';
+    o.covering = false;
+    o.freeHits = 0;
   } else {
     toCircle(w, { resetCooldown: true });
   }
@@ -247,6 +261,7 @@ function updateFight(w, dt) {
     // got up this tick: the clock runs on, so it is stopped for exactly getup.t − knockdown.t
   }
   if (!r.clockRunning) return;
+  updatePressure(w); // live round ticks only (D9a)
   updateOpponent(w, dt);
   // the clock ticks after the AI, so a knockdown on this tick (punch or strike) never consumes clock time
   if (st.phase !== PHASE.FIGHT || !r.clockRunning) return;

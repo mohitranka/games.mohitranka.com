@@ -29,6 +29,7 @@ export function createEventSource({ clock, tuning = defaultTuning, profile = DEF
 
   // injection state
   let overrideGuard = null; // 'none' | 'full' | null
+  let overrideTrackingOk = null; // true | false | null (tests: simulate a camera stall, D10 auto-resume)
   let latencyMs = 0;
 
   // guard-event bookkeeping (decorate)
@@ -184,6 +185,10 @@ export function createEventSource({ clock, tuning = defaultTuning, profile = DEF
       if (level !== null && level !== 'none' && level !== 'full') throw new Error(`inject.guard: bad level ${level}`);
       overrideGuard = level;
     },
+    /** Override frame.tracking.ok (null releases). Simulates a camera loss for the auto-pause / auto-resume. */
+    setTrackingOk(v) {
+      overrideTrackingOk = v === null || v === undefined ? null : !!v;
+    },
     setLatency(ms) {
       latencyMs = Math.max(0, +ms || 0);
     },
@@ -197,6 +202,7 @@ export function createEventSource({ clock, tuning = defaultTuning, profile = DEF
      * @param {{drain?: boolean}} [opts]
      */
     decorate(frame, { drain = true } = {}) {
+      if (overrideTrackingOk !== null) frame.tracking = { ...frame.tracking, ok: overrideTrackingOk };
       if (overrideGuard !== null) {
         const full = overrideGuard === 'full';
         frame.guard = { ...frame.guard, level: overrideGuard, raw: full, left: full, right: full };

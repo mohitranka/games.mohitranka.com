@@ -52,13 +52,14 @@ const commandLog = [];
 const perf = { simMs: 0, renderMs: 0, fps: 0, _frames: 0, _fpsT: performance.now() };
 let bodyPhase = null;
 let bodyInput = null;
-let pauseSentForLoss = false;
+let pausedForLoss = false; // D10: we paused the fight because the camera was lost (auto-resume applies)
 let detachKeyboard = () => {};
 let overlay = null;
 
 // ───────────────────────────────────────────── loop
 function tick() {
   const t0 = performance.now();
+  source.setGestureMode?.(gestureModeFor(sim.state, lastFrame));
   const frame = events.decorate(source.sample(simTime + SIM_DT));
   lastFrame = frame;
   const out = sim.step(frame, SIM_DT) ?? [];
@@ -74,6 +75,7 @@ function tick() {
   if (pending.length > 2000) pending.splice(0, pending.length - 2000);
   audio.handle(out, sim.state);
   phaseSideEffects(out, frame);
+  if (frame.gesture?.fired) routeGesture(frame.gesture.kind, sim.state);
   perf.simMs += 0.1 * (performance.now() - t0 - perf.simMs);
 }
 
@@ -139,6 +141,7 @@ function step(n = 1, { render = true } = {}) {
 // ───────────────────────────────────────────── commands and phase side effects
 function command(cmd) {
   if (!cmd || typeof cmd.type !== 'string') throw new Error('command: expected {type}');
+  if (cmd.type === COMMAND.RESUME) pausedForLoss = false; // any resume (key, gesture, auto) ends a loss pause
   commandLog.push({ tick: sim.state.tick + 1, cmd: structuredClone(cmd) }); // applied at the start of the next step
   sim.command(cmd);
 }
@@ -157,11 +160,13 @@ function phaseSideEffects(out, frame) {
     }
   }
   const st = sim.state;
-  // camera loss pauses the fight (M3: only the camera HandSource reports tracking.ok === false)
-  if (frame.source === 'camera' && !frame.tracking.ok && st.phase === PHASE.FIGHT && !st.paused) {
-    if (!pauseSentForLoss) command({ type: COMMAND.PAUSE });
-    pauseSentForLoss = true;
-  } else if (frame.tracking.ok) pauseSentForLoss = false;
+  // camera loss pauses the fight; D10 auto-resume (3-2-1 with guard held) brings it back
+  const tracked = frame.source === 'camera' || frame.source === 'replay';
+  if (tracked && !frame.tracking.ok && st.phase === PHASE.FIGHT && !st.paused && !pausedForLoss) {
+    command({ type: COMMAND.PAUSE });
+    pausedForLoss = true;
+  }
+  if (st.phase !== PHASE.FIGHT) pausedForLoss = false;
   if (st.phase !== bodyPhase) {
     if (bodyPhase) document.body.classList.remove(`phase-${bodyPhase}`);
     bodyPhase = st.phase;
@@ -171,6 +176,35 @@ function phaseSideEffects(out, frame) {
     if (bodyInput) document.body.classList.remove(`input-${bodyInput}`);
     bodyInput = frame.source;
     document.body.classList.add(`input-${bodyInput}`);
+  }
+}
+
+// ───────────────────────────────────────────── D10 camera gestures
+/** Which held gestures count in the current phase. Confirm is never active in a running fight (guard = guard). */
+function gestureModeFor(st, frame) {
+  if (source.kind !== 'camera' && source.kind !== 'replay') return {};
+  if (st.paused) {
+    if (!pausedForLoss) return { confirm: true }; // P / pause gesture → confirm resumes
+    return frame.tracking.ok ? { resume: true } : {}; // camera back: guard up for 3-2-1
+  }
+  switch (st.phase) {
+    case PHASE.CALIBRATION: return { pause: true, pauseHoldMs: inputTuning.gestureCancelHoldMs };
+    case PHASE.PRACTICE: return { confirm: true };
+    case PHASE.FIGHT: return { pause: true };
+    case PHASE.MATCH_END: return { confirm: true };
+    default: return {};
+  }
+}
+
+/** A completed hold → the same COMMAND the key would send (onMenuKey). */
+function routeGesture(kind, st) {
+  if (kind === 'confirm' || kind === 'resume') {
+    if (st.paused) command({ type: COMMAND.RESUME });
+    else if (kind === 'confirm' && st.phase === PHASE.PRACTICE) command({ type: COMMAND.SKIP_PRACTICE });
+    else if (kind === 'confirm' && st.phase === PHASE.MATCH_END) command({ type: COMMAND.RESTART });
+  } else if (kind === 'pause') {
+    if (st.phase === PHASE.CALIBRATION) command({ type: COMMAND.CANCEL });
+    else if (st.phase === PHASE.FIGHT && !st.paused) command({ type: COMMAND.PAUSE });
   }
 }
 

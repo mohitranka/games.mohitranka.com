@@ -21,6 +21,7 @@ export function createPlayer() {
     maxStamina: 100,
     fatigued: false,
     lowHp: false,
+    pressured: false, // D9a: the turtle-pressure rules are on
     gassedUntil: -1,
     guard: 'none',
     guardBrokenUntil: -1,
@@ -35,8 +36,8 @@ export function createPlayer() {
 /** @returns {import('./types.js').Opponent} */
 export function createOpponent() {
   return {
-    hp: 100,
-    maxHp: 100,
+    hp: 250, // D9: Tamsin's maxHp is 250 (game tuning owns the number; GE's reset applies it)
+    maxHp: 250,
     state: 'circle',
     attack: null,
     side: null,
@@ -49,6 +50,10 @@ export function createOpponent() {
     contactAt: null,
     guard: 'high',
     mitts: false,
+    feint: false, // D9: the current telegraph is a feint (bots must not read this)
+    covering: false, // D9: free hits used up, guard high for the rest of the window
+    freeHits: 0, // D9: clean hits left in the current open window
+    sequence: { kind: 'single', combo: null }, // D9 (bots must not read this)
     knockdowns: 0,
     down: null,
     points: 0,
@@ -130,5 +135,6 @@ export function createInputFrame(t = 0, source = 'none') {
     events: [],
     calibration: createCalibrationStatus(),
     spot: { kGuardDrift: null, hint: null },
+    gesture: { kind: null, progress: 0, fired: false, available: [] }, // D10
   };
 }

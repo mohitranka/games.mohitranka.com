@@ -73,6 +73,17 @@ export const tuning = {
   calibProvisionalThreshold: 1.0, // 1/s: straights are detected with max(this, noiseFactor × noise) during calibration
   spotDriftMax: 0.15,
 
+  // camera gestures for menu actions (D10)
+  gestureConfirmHoldMs: 1000, // both fists in the guard zone: resume / skip practice / rematch
+  gesturePauseHoldMs: 1000, // both hands open at face height: pause in FIGHT
+  gestureCancelHoldMs: 1500, // the same pose cancels calibration
+  gestureResumeMs: 3000, // 3-2-1 auto-resume after a camera-loss pause (guard held throughout)
+  gestureBreakMs: 150, // a hold resets when its pose is broken for longer than this
+  pauseFingersUpMin: 0.03, // fh: mean fingertip y must be this far above the wrist
+  pauseMaxBelowGuard: 0.05, // fh: palm centre at most this far below the guard centre ("about face height")
+  pauseRequirePalmFacing: false, // palm-towards-camera check; enable after MC-19 confirms palmFacingSign
+  palmFacingSign: 1,
+
   // view-only glove depth
   extFullRatio: 1.4, // kRatio at which ext = 1
 
