@@ -52,6 +52,12 @@ export function menuKeys(features, phase) {
   return { confirm: 'Enter', pause: slipKeys ? 'Esc' : 'P', resume: slipKeys ? 'Esc' : 'P', cancel: 'Esc' };
 }
 
+/**
+ * D14 training keys (game-design §15.5). Enter = next; Esc = open the menu overlay; in the overlay R repeat,
+ * Backspace back, M start match, Esc close. Camera: confirm / pause gestures and the overlay punch-selectors.
+ */
+export const TRAINING_KEYMAP = Object.freeze({ next: 'Enter', menu: 'Esc', repeat: 'R', back: 'Backspace', startMatch: 'M', close: 'Esc' });
+
 /** Bindings active under a features object. */
 export function activeKeymap(features) {
   return KEYMAP.filter((b) => !b.feature || features?.[b.feature]);

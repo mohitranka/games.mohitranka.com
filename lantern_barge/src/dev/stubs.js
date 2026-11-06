@@ -10,6 +10,7 @@ import {
 } from '../shared/constants.js';
 import { createInitialState, createPlayer, createOpponent } from '../shared/fixtures.js';
 import { NO_FEATURES } from '../shared/features.js';
+import { trainingItems, DEFAULT_MOVES } from '../shared/training.js';
 
 /** Stub-only timings (seconds). Compressed so the autoplay loop stays under 30 s. */
 export const STUB_TIMING = Object.freeze({
@@ -126,6 +127,10 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false, 
     const from = state.phase;
     if (from === PHASE.PRACTICE) state.practice = null;
     if (from === PHASE.ROUND_END) state.round.restLeft = null;
+    if (from === PHASE.TRAINING) state.training = null;
+    if (to === PHASE.TRAINING) {
+      state.training = { input: state.inputKind, items: trainingItems(features), index: 0, overlay: false };
+    }
     state.phase = to;
     state.phaseStart = now();
     emit(EVENT.PHASE, { from, to });
@@ -135,6 +140,7 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false, 
       state.opponent.mitts = true;
     }
     if (to === PHASE.FIGHT) enterRound();
+    if (to === PHASE.TRAINING) trainingItem(0);
     if (to === PHASE.ROUND_END) {
       state.round.restLeft = T.rest;
       state.player.hp = Math.min(state.player.maxHp, state.player.hp + REST_HEAL.player);
@@ -173,10 +179,64 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false, 
     setPhase(PHASE.FIGHT);
   }
 
-  function startCommand() {
+  function startCommand(mode = 'match') {
     if (state.phase !== PHASE.BOOT) return;
+    ctx.mode = mode === 'training' ? 'training' : 'match';
     const toCalib = !!frame?.calibration?.wanted || autoplay;
-    setPhase(toCalib ? PHASE.CALIBRATION : PHASE.PRACTICE);
+    setPhase(toCalib ? PHASE.CALIBRATION : afterCalibration());
+  }
+
+  // D14 (stub): menu navigation and state shape only; lessons are judged by the real game (GE)
+  function afterCalibration() {
+    if (ctx.mode === 'training') return PHASE.TRAINING;
+    return DEFAULT_MOVES.every((m) => state.mastered.includes(m)) ? PHASE.FIGHT : PHASE.PRACTICE;
+  }
+  function trainingItem(index) {
+    const tr = state.training;
+    tr.index = Math.max(0, Math.min(tr.items.length - 1, index));
+    const it = tr.items[tr.index];
+    Object.assign(tr, {
+      item: it.id, lesson: it.move, reps: 0, needed: it.kind === 'lesson' ? (it.move === 'guard' ? 3 : it.move === 'rise' ? 2 : 5) : it.kind === 'mitt' ? 10 : 0,
+      perHand: { left: 0, right: 0 }, complete: it.kind !== 'lesson' && it.kind !== 'mitt', results: [], call: null, step: null, score: null, tally: null,
+    });
+    emit(EVENT.TRAINING_ITEM, { item: it.id });
+  }
+  // stub judging: a punch of the lesson's type is a rep (no other rules); near misses become failed reps
+  function trainingInput(ev) {
+    const tr = state.training;
+    if (!tr || tr.overlay || !tr.lesson || tr.complete) return;
+    let rep = null;
+    if (ev.type === 'punch') {
+      const move = ev.target === 'body' ? 'body' : ev.punchType;
+      rep = move === tr.lesson ? { move, ok: true, hand: ev.hand } : { move: tr.lesson, ok: false, hand: ev.hand, reason: 'wrong_move', got: move };
+    } else if (ev.type === 'near_miss') rep = { move: tr.lesson, ok: false, hand: ev.hand, reason: ev.reason };
+    if (!rep) return;
+    emit(EVENT.TRAINING_REP, rep);
+    tr.results = [...tr.results, { ...rep, t: now() }].slice(-10);
+    if (!rep.ok) return;
+    tr.reps += 1;
+    tr.perHand[rep.hand] += 1;
+    if (tr.reps >= tr.needed) {
+      tr.complete = true;
+      emit(EVENT.TRAINING_RESULT, { item: tr.item, score: 1 });
+    }
+  }
+  function trainingCommand(cmd) {
+    const tr = state.training;
+    if (!tr) return;
+    switch (cmd.type) {
+      case COMMAND.TRAINING_NEXT: tr.overlay = false; trainingItem(tr.index + 1); break;
+      case COMMAND.TRAINING_BACK: tr.overlay = false; trainingItem(tr.index - 1); break;
+      case COMMAND.TRAINING_REPEAT: tr.overlay = false; trainingItem(tr.index); break;
+      case COMMAND.TRAINING_GOTO: {
+        const i = tr.items.findIndex((x) => x.id === cmd.item);
+        if (i >= 0) { tr.overlay = false; trainingItem(i); }
+        break;
+      }
+      case COMMAND.TRAINING_OVERLAY: tr.overlay = !!cmd.open; break;
+      case COMMAND.TRAINING_START_MATCH: startMatch(); break;
+      default: break;
+    }
   }
 
   function matchEnd(method, winner) {
@@ -187,7 +247,7 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false, 
   }
 
   function softResetToBoot() {
-    const keep = { time: state.time, tick: state.tick, calibSession: state.calibSession, inputKind: state.inputKind };
+    const keep = { time: state.time, tick: state.tick, calibSession: state.calibSession, inputKind: state.inputKind, mastered: state.mastered };
     const from = state.phase;
     state = Object.assign(createInitialState(state.seed), keep, { phaseStart: keep.time });
     ctx = freshCtx();
@@ -768,7 +828,7 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false, 
       case PHASE.CALIBRATION: {
         const c = frame?.calibration;
         const done = c && c.done && c.session === state.calibSession;
-        if (done || (autoplay && elapsed >= T.calibration)) setPhase(PHASE.PRACTICE);
+        if (done || (autoplay && elapsed >= T.calibration)) setPhase(afterCalibration());
         break;
       }
       case PHASE.PRACTICE:
@@ -800,7 +860,16 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false, 
       return;
     }
     switch (cmd.type) {
-      case COMMAND.START: startCommand(); break;
+      case COMMAND.START: startCommand(cmd.mode); break;
+      case COMMAND.TRAINING_NEXT:
+      case COMMAND.TRAINING_BACK:
+      case COMMAND.TRAINING_REPEAT:
+      case COMMAND.TRAINING_GOTO:
+      case COMMAND.TRAINING_OVERLAY:
+      case COMMAND.TRAINING_START_MATCH:
+        if (state.phase === PHASE.TRAINING) trainingCommand(cmd);
+        break;
+      case COMMAND.TRAINING_PROGRESS: state.mastered = [...(cmd.mastered ?? [])]; break;
       case COMMAND.CANCEL: if (state.phase === PHASE.CALIBRATION) setPhase(PHASE.BOOT); break;
       case COMMAND.SKIP_PRACTICE: if (state.phase === PHASE.PRACTICE) startMatch(); break;
       case COMMAND.PAUSE: state.paused = true; break;
@@ -856,6 +925,10 @@ export function createStubSim({ seed = 1, allowDebug = false, autoplay = false, 
       state.time = state.tick * SIM_DT;
       state.inputKind = f?.source ?? 'none';
       for (const ev of f?.events ?? []) {
+        if (state.phase === PHASE.TRAINING) {
+          trainingInput(ev);
+          continue;
+        }
         if (ev.type === 'punch') handlePunch(ev);
         else if (ev.type === 'parry') handleParry(ev); // D12
       }

@@ -6,6 +6,7 @@ import { createPlayer, createOpponent } from '../shared/fixtures.js';
 import { EPS } from './stamina.js';
 import { toCircle, updateOpponent, clearSplit, addOppStamina } from './opponent-ai.js';
 import { initRise, updateRise, riseDecision, riseHp } from './defence.js';
+import { PHASE_TRAINING, enterTraining as enterTrainingItems, updateTraining, defaultsMastered } from './training.js';
 import { restartPressure, updatePressure } from './pressure.js';
 
 /**
@@ -47,7 +48,7 @@ export function freshOpponent(T) {
 
 // ───────────────────────────────────────────── phase changes
 
-function setPhase(w, to) {
+export function setPhase(w, to) {
   const st = w.state;
   const from = st.phase;
   if (from === PHASE.PRACTICE && to !== PHASE.PRACTICE) st.practice = null;
@@ -76,6 +77,8 @@ export function enterPractice(w) {
 /** PRACTICE → FIGHT and MATCH_END → FIGHT: a fresh match (full HP and stamina, tallies cleared). */
 export function startMatch(w) {
   const st = w.state;
+  st.training = null; // D14
+  w.ctx.mode = 'match';
   st.player = freshPlayer(w.T);
   st.opponent = freshOpponent(w.T);
   st.result = { winner: null, method: null };
@@ -159,6 +162,8 @@ function finishRest(w) {
 export function enterBoot(w) {
   const st = w.state;
   setPhase(w, PHASE.BOOT);
+  st.training = null; // D14
+  w.ctx.mode = 'match';
   st.player = freshPlayer(w.T);
   st.opponent = freshOpponent(w.T);
   st.result = { winner: null, method: null };
@@ -176,6 +181,7 @@ export function gotoPhase(w, phase) {
     case PHASE.CALIBRATION: enterCalibration(w); break;
     case PHASE.PRACTICE: enterPractice(w); break;
     case PHASE.FIGHT: enterFight(w); break; // full entry effects, including the 3-2-1 countdown (lead ruling)
+    case PHASE_TRAINING: enterTraining(w); break;
     case PHASE.ROUND_END:
       st.round.clockRunning = false;
       st.round.countdown = null;
@@ -328,7 +334,7 @@ export function updatePhase(w, dt) {
   switch (st.phase) {
     case PHASE.CALIBRATION: {
       const c = w.frame?.calibration;
-      if (c && c.done && c.session === st.calibSession) enterPractice(w);
+      if (c && c.done && c.session === st.calibSession) afterCalibration(w);
       break;
     }
     case PHASE.PRACTICE:
@@ -341,7 +347,27 @@ export function updatePhase(w, dt) {
     case PHASE.ROUND_END:
       if (st.time - st.phaseStart >= w.T.restLength - EPS) finishRest(w);
       break;
+    case PHASE_TRAINING:
+      updateTraining(w, dt, w.frame);
+      break;
     default: // BOOT and MATCH_END wait for commands
       break;
   }
+}
+
+// ───────────────────────────────────────────── D14 training entry and the practice-card skip
+
+export function enterTraining(w) {
+  enterTrainingItems(w, setPhase);
+}
+
+/** Box path: the practice card, unless every default move is mastered (then straight into the match). */
+export function enterPracticeOrMatch(w) {
+  if (defaultsMastered(w.state)) startMatch(w);
+  else enterPractice(w);
+}
+
+function afterCalibration(w) {
+  if (w.ctx.mode === 'training') enterTraining(w);
+  else enterPracticeOrMatch(w);
 }

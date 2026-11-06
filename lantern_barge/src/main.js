@@ -12,6 +12,7 @@ import { createHandSource } from './input/hand-source.js';
 import { parseJsonl } from './input/replay.js';
 import { createStubSim, createNullView, createNullAudio } from './dev/stubs.js';
 import { createFeatures, createFeaturesFrom } from './shared/features.js';
+import { createTrainingProgress, trainingMoves } from './shared/training.js';
 import { installTestHook } from './test-hook.js';
 
 const params = new URLSearchParams(location.search);
@@ -75,13 +76,22 @@ let bodyInput = null;
 let pausedForLoss = false; // D10: we paused the fight because the camera was lost (auto-resume applies)
 let detachKeyboard = () => {};
 let overlay = null;
+// D14 stored training progress, per input ('camera' covers replay too)
+const progressInput = (kind) => (kind === 'keyboard' ? 'keyboard' : 'camera');
+const progress = { camera: createTrainingProgress({ input: 'camera', features: FEATURES }), keyboard: createTrainingProgress({ input: 'keyboard', features: FEATURES }) };
+let progressSentFor = null;
 
 // ───────────────────────────────────────────── loop
 function tick() {
   const t0 = performance.now();
   source.setGestureMode?.(gestureModeFor(sim.state, lastFrame));
+  const training = sim.state.phase === PHASE.TRAINING;
+  source.setTraining?.(training); // D14: near misses + meter (camera); key-press meter (keyboard)
+  if (source !== events) events.setTraining(false);
   const frame = events.decorate(source.sample(simTime + SIM_DT));
   frame.features = FEATURES;
+  if (training) overlaySelectors(frame, sim.state);
+  syncProgress(frame.source);
   lastFrame = frame;
   const out = sim.step(frame, SIM_DT) ?? [];
   simTime = typeof sim.state.time === 'number' ? sim.state.time : simTime + SIM_DT;
@@ -95,6 +105,10 @@ function tick() {
   pending.push(...out);
   if (pending.length > 2000) pending.splice(0, pending.length - 2000);
   audio.handle(out, sim.state);
+  if (out.some((e) => e.type === EVENT.TRAINING_RESULT) && progress[progressInput(frame.source)].handle(out)) {
+    progressSentFor = null; // mastered changed (and was saved): tell the sim
+    renderTitleProgress();
+  }
   phaseSideEffects(out, frame);
   if (frame.gesture?.fired) routeGesture(frame.gesture.kind, sim.state);
   perf.simMs += 0.1 * (performance.now() - t0 - perf.simMs);
@@ -201,6 +215,60 @@ function phaseSideEffects(out, frame) {
   }
 }
 
+// ───────────────────────────────────────────── D14 training
+/** Send the stored progress for the active input to the sim (on an input change, and after it changes). */
+function syncProgress(kind) {
+  if (kind === 'none') return;
+  const input = progressInput(kind);
+  if (progressSentFor === input) return;
+  progressSentFor = input;
+  const mastered = progress[input].mastered;
+  if ((sim.state.mastered ?? []).join() === mastered.join()) return; // nothing new: keep the command log clean
+  command({ type: COMMAND.TRAINING_PROGRESS, mastered });
+}
+
+/**
+ * Camera overlay punch-selectors (§15.5): with the training menu open, a right straight repeats, a left straight
+ * goes back, and either hook starts the match. The selector punches are removed from the frame, so they never
+ * count as reps. Keyboard punches pass through (R / Backspace / M are the keyboard's selectors).
+ */
+function overlaySelectors(frame, st) {
+  if (!st.training?.overlay || (frame.source !== 'camera' && frame.source !== 'replay')) return;
+  const keep = [];
+  for (const e of frame.events) {
+    if (e.type !== 'punch') {
+      keep.push(e);
+      continue;
+    }
+    if (e.punchType === 'hook') command({ type: COMMAND.TRAINING_START_MATCH });
+    else if (e.punchType === 'straight') command({ type: e.hand === 'right' ? COMMAND.TRAINING_REPEAT : COMMAND.TRAINING_BACK });
+  }
+  frame.events = keep;
+}
+
+/** Enter / confirm: close the menu, or continue (start the match on the last item). */
+function trainingNext(st) {
+  const tr = st.training;
+  if (!tr) return;
+  if (tr.overlay) command({ type: COMMAND.TRAINING_OVERLAY, open: false });
+  else if (tr.item === 'start_match') command({ type: COMMAND.TRAINING_START_MATCH });
+  else command({ type: COMMAND.TRAINING_NEXT });
+}
+
+/** Title-screen ticks: mastered moves per input (stored progress). */
+function renderTitleProgress() {
+  const el = $('boot-progress');
+  if (!el) return;
+  const moves = trainingMoves(FEATURES);
+  const line = (input, label) => {
+    const m = new Set(progress[input].mastered);
+    return `${label}: ${moves.map((x) => `${m.has(x) ? '✓' : '·'} ${x}`).join('  ')}`;
+  };
+  const any = progress.camera.mastered.length + progress.keyboard.mastered.length > 0;
+  el.hidden = !any;
+  el.textContent = any ? `${line('camera', 'Camera')}\n${line('keyboard', 'Keyboard')}` : '';
+}
+
 // ───────────────────────────────────────────── D10 camera gestures
 /** Which held gestures count in the current phase. Confirm is never active in a running fight (guard = guard). */
 function gestureModeFor(st, frame) {
@@ -210,6 +278,13 @@ function gestureModeFor(st, frame) {
     return frame.tracking.ok ? { resume: true } : {}; // camera back: guard up for 3-2-1
   }
   switch (st.phase) {
+    case PHASE.TRAINING: {
+      // confirm continues only when the item is done (a guard is a rep, not a confirm) or on "start match";
+      // in the menu, confirm closes it. Pause opens the menu.
+      const tr = st.training;
+      if (tr?.overlay) return { confirm: true };
+      return { pause: true, confirm: !!(tr && (tr.complete || tr.item === 'start_match')) };
+    }
     case PHASE.CALIBRATION: return { pause: true, pauseHoldMs: inputTuning.gestureCancelHoldMs };
     case PHASE.PRACTICE: return { confirm: true };
     case PHASE.FIGHT: return { pause: true };
@@ -224,8 +299,10 @@ function routeGesture(kind, st) {
     if (st.paused) command({ type: COMMAND.RESUME });
     else if (kind === 'confirm' && st.phase === PHASE.PRACTICE) command({ type: COMMAND.SKIP_PRACTICE });
     else if (kind === 'confirm' && st.phase === PHASE.MATCH_END) command({ type: COMMAND.RESTART });
+    else if (kind === 'confirm' && st.phase === PHASE.TRAINING) trainingNext(st);
   } else if (kind === 'pause') {
-    if (st.phase === PHASE.CALIBRATION) command({ type: COMMAND.CANCEL });
+    if (st.phase === PHASE.TRAINING) command({ type: COMMAND.TRAINING_OVERLAY, open: true });
+    else if (st.phase === PHASE.CALIBRATION) command({ type: COMMAND.CANCEL });
     else if (st.phase === PHASE.FIGHT && !st.paused) command({ type: COMMAND.PAUSE });
   }
 }
@@ -236,6 +313,16 @@ function onMenuKey(code) {
   const phase = st.phase;
   // with the slip feature (?next=1) P is "slip right" in FIGHT and Esc pauses; while paused, Esc or P resumes
   const slipKeys = FEATURES.slip && phase === PHASE.FIGHT;
+  if (phase === PHASE.TRAINING) {
+    // D14 (§15.5): Enter next; Esc opens / closes the menu; in the menu R repeat, Backspace back, M start match
+    const open = !!st.training?.overlay;
+    if (code === 'Enter') trainingNext(st);
+    else if (code === 'Escape') command({ type: COMMAND.TRAINING_OVERLAY, open: !open });
+    else if (open && code === 'KeyR') command({ type: COMMAND.TRAINING_REPEAT });
+    else if (open && code === 'Backspace') command({ type: COMMAND.TRAINING_BACK });
+    else if (open && code === 'KeyM') command({ type: COMMAND.TRAINING_START_MATCH });
+    return;
+  }
   if (code === 'Enter') {
     if (phase === PHASE.BOOT) startKeyboard();
     else if (phase === PHASE.MATCH_END) command({ type: COMMAND.RESTART });
@@ -267,13 +354,22 @@ function cancelPendingCamera() {
   setBootStatus('');
 }
 
-function startKeyboard() {
+/** @param {'match'|'training'} [mode]  D14: 'training' = "Train with keyboard" */
+function startKeyboard(mode = 'match') {
   sourceChoice += 1;
   cancelPendingCamera();
   audio.unlock().catch(() => {});
   useKeyboardPunches();
   setSource(events);
-  command({ type: COMMAND.START });
+  releaseButtonFocus();
+  syncProgress('keyboard'); // before START: the sim decides on the practice card from `mastered`
+  command({ type: COMMAND.START, mode });
+}
+
+/** The title buttons hide once play starts: drop their focus so Enter means "next" (D14), not "click again". */
+function releaseButtonFocus() {
+  const a = document.activeElement;
+  if (a && a.closest?.('#boot')) a.blur();
 }
 
 function setSource(next) {
@@ -294,17 +390,20 @@ function setBootStatus(text) {
   if (status) status.textContent = text;
 }
 
-async function startCamera() {
+/** @param {'match'|'training'} [mode]  D14: 'training' = "Train with camera" (calibrates first, like Box) */
+async function startCamera(mode = 'match') {
   if (pendingCamera || !sim || sim.state.phase !== PHASE.BOOT) return; // already starting, or a match is on
   if (source.kind === 'camera') {
-    command({ type: COMMAND.START }); // camera already running at BOOT: just start
+    releaseButtonFocus();
+    syncProgress('camera');
+    command({ type: COMMAND.START, mode }); // camera already running at BOOT: just start
     return;
   }
   const my = ++sourceChoice;
   audio.unlock().catch(() => {});
   bootMessage('');
   setBootStatus('Starting the camera and hand tracking…');
-  const hs = createHandSource({ backend: 'camera', clock, tuning: inputTuning, video: $('cam'), prefer: PREFER, face: FEATURES.slip });
+  const hs = createHandSource({ backend: 'camera', clock, tuning: inputTuning, video: $('cam'), prefer: PREFER, face: FEATURES.slip, coach: DEBUG });
   pendingCamera = hs;
   try {
     await hs.start();
@@ -314,7 +413,9 @@ async function startCamera() {
     }
     setSource(hs);
     setBootStatus(`Hand tracking ready (${hs.detectorStats?.delegate ?? '?'})`);
-    command({ type: COMMAND.START });
+    releaseButtonFocus();
+    syncProgress('camera');
+    command({ type: COMMAND.START, mode });
   } catch (err) {
     hs.stop();
     if (err?.cancelled || my !== sourceChoice) return; // superseded by another choice: say nothing
@@ -335,7 +436,7 @@ async function startCamera() {
 async function loadReplay(urlOrJsonl, { calibrate = false } = {}) {
   const text = /^\s*\{/.test(urlOrJsonl) ? urlOrJsonl : await (await fetch(urlOrJsonl)).text();
   const recording = parseJsonl(text);
-  const hs = createHandSource({ backend: 'replay', clock, tuning: inputTuning, recording, calibrate });
+  const hs = createHandSource({ backend: 'replay', clock, tuning: inputTuning, recording, calibrate, coach: DEBUG });
   await hs.start();
   setSource(hs);
   const last = recording.results.at(-1);
@@ -448,6 +549,9 @@ async function boot() {
 
   $('btn-keyboard')?.addEventListener('click', () => startKeyboard());
   $('btn-camera')?.addEventListener('click', () => startCamera());
+  $('btn-train-keyboard')?.addEventListener('click', () => startKeyboard('training')); // D14
+  $('btn-train-camera')?.addEventListener('click', () => startCamera('training'));
+  renderTitleProgress();
   const status = $('boot-status');
   // developer layer info only under ?debug=1 (BUG-006); players see #boot-status only for camera start-up
   if (status && DEBUG) status.textContent = `game: ${layers.game} · view: ${layers.view} · input: ${events.kind}`;

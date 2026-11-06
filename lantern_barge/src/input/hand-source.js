@@ -15,8 +15,10 @@ import { DEFAULT_PROFILE } from './tuning.js';
  *   recording?:{header:object, results:object[], cues:object[]}, calibrate?:boolean,
  *   video?:HTMLVideoElement, prefer?:'GPU'|'CPU'}} opts
  */
-export function createHandSource({ backend, clock, tuning, recording = null, calibrate = false, video = null, prefer = 'GPU', face = false }) {
+export function createHandSource({ backend, clock, tuning, recording = null, calibrate = false, video = null, prefer = 'GPU', face = false, coach = false }) {
   const pipeline = createInputPipeline({ tuning, profile: DEFAULT_PROFILE });
+  const coachAlways = !!coach; // ?debug=1: near misses + meter all the time
+  pipeline.setCoaching(coachAlways);
   const calib = createCalibration({ tuning });
   const gestures = createGestureDetector({ tuning });
   const wanted = backend === 'camera' || (backend === 'replay' && calibrate);
@@ -65,7 +67,7 @@ export function createHandSource({ backend, clock, tuning, recording = null, cal
       lastFaceT = result.t;
     }
     pipeline.setProfile(activeProfile());
-    const { punches } = pipeline.ingest(result);
+    const { punches, nearMisses } = pipeline.ingest(result);
     if (calib.active) {
       const face = tuning.calibUseFace && lastFace && result.t - lastFaceT <= tuning.headGraceMs / 1000 ? lastFace : null;
       const done = calib.update(pipeline.tracker, result.t, punches, face);
@@ -77,6 +79,7 @@ export function createHandSource({ backend, clock, tuning, recording = null, cal
         delete ev.peak; // calibration-only field
         queue.push(ev);
       }
+      queue.push(...nearMisses); // D14 (training / ?debug=1 only); tCommit = t
     }
     updateSpot(result.t);
     noteSeen(result.t);
@@ -123,6 +126,7 @@ export function createHandSource({ backend, clock, tuning, recording = null, cal
     f.tracking = tracking();
     f.calibration = { ...calib.status(), wanted };
     f.gesture = gestures.read(t, drain);
+    f.meter = pipeline.meter(); // D14: null unless training or ?debug=1
     if (lastFace && t - lastFaceT <= tuning.headGraceMs / 1000 + 1e-9) {
       f.head = { present: true, raw: { ...lastFace, x: 1 - lastFace.x } }; // mirrored like the hands; spike: dx/dy/w0/dodge come with M7
     }
@@ -227,6 +231,10 @@ export function createHandSource({ backend, clock, tuning, recording = null, cal
     },
     cancelCalibration() {
       calib.cancel();
+    },
+    /** D14: near_miss events and frame.meter while training (always on with createHandSource({coach:true})). */
+    setTraining(on) {
+      pipeline.setCoaching(!!on || coachAlways);
     },
     /** D10: which held gestures count right now (main.js derives this from the phase). */
     setGestureMode(m) {

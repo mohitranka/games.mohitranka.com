@@ -84,6 +84,23 @@ export {};
  * @property {{kGuardDrift:number|null, hint:'return_to_spot'|null}} spot   always {null,null} for keyboard
  * @property {GestureState} gesture        D10 camera gestures; always idle for keyboard
  * @property {import('./features.js').Features} features   M5+ flags (?next=1), stamped by main.js on every frame
+ * @property {InputMeter|null} meter        D14: live per-hand signals vs thresholds; non-null only while training
+ *           (source.setTraining(true)) or with ?debug=1
+ */
+
+/**
+ * D14 live meter (§15.2). Camera/replay: every signal the lessons show, per hand, against its commit threshold.
+ * A signal is null when its feature is off. Keyboard: `pressed` = the action of the key held for that hand, else null.
+ * @typedef {{value:number, threshold:number}} MeterSignal
+ * @typedef {Object} HandMeter
+ * @property {MeterSignal} [straight]   d ln k/dt (1/s) vs the effective straight threshold
+ * @property {MeterSignal} [hook]       inward speed (frame widths/s, + = toward the midline) vs hookThreshold
+ * @property {MeterSignal|null} [uppercut]  upward speed (frame heights/s) vs uppercutThreshold
+ * @property {MeterSignal|null} [parry] outward speed (frame widths/s) vs parryThreshold
+ * @property {MeterSignal|null} [body]  palm y below the guard centre (frame heights) vs bodyBelowGuard
+ * @property {{inZone:boolean, reason:'hand_out_of_zone'|'too_close'|'too_far'|'fist_open'|'out_of_frame'|null}} [guard]
+ * @property {'straight'|'hook'|'uppercut'|'body'|'parry'|'guard'|null} [pressed]   keyboard only
+ * @typedef {{kind:'camera'|'keyboard', left:HandMeter, right:HandMeter}} InputMeter
  */
 
 /**
@@ -122,7 +139,19 @@ export {};
  * @typedef {{type:'parry', id:number, hand:'left'|'right', tOnset:number, tCommit:number}} ParryInputEvent
  */
 
-/** @typedef {PunchEvent|GuardEvent|ParryInputEvent} InputEvent */
+/**
+ * D14 near miss (§15.3): a motion that armed a classifier but didn't commit, or failed exactly one gate. At most one
+ * per hand per 400 ms; emitted only while training (source.setTraining(true)) or with ?debug=1. Never changes a
+ * commit. `kind` is the move it looked like; value/threshold are in the gate's own units (null when not numeric).
+ * kind 'body' + reason 'not_low' accompanies a straight/hook that committed with target 'head' but dropped at least
+ * half the body line. Guard reasons (hand_out_of_zone, too_close, too_far) fire while both fists are up near the
+ * guard but this hand fails one guard gate for ≥ 400 ms.
+ * @typedef {{type:'near_miss', t:number, tCommit:number, hand:'left'|'right',
+ *   kind:'straight'|'hook'|'uppercut'|'body'|'parry'|'guard', reason:string, value:number|null,
+ *   threshold:number|null}} NearMissEvent   reason ∈ NEAR_MISS_REASON; tCommit = t (queue ordering)
+ */
+
+/** @typedef {PunchEvent|GuardEvent|ParryInputEvent|NearMissEvent} InputEvent */
 
 /**
  * @typedef {Object} HandProfile
@@ -148,6 +177,7 @@ export {};
  * @property {(t:number) => InputFrame} peek        never drains; events: []
  * @property {(session:number) => void} beginCalibration   synchronously resets status: done=false, session=session
  * @property {() => void} cancelCalibration
+ * @property {(on:boolean) => void} [setTraining]   D14: near_miss + frame.meter on (main.js: phase === TRAINING)
  * @property {CalibrationProfile|null} profile
  */
 
@@ -245,6 +275,32 @@ export {};
  * @property {{winner:'player'|'opponent'|null, method:'ko'|'points'|null}} result   ties → player
  * @property {Player} player
  * @property {Opponent} opponent
+ * @property {TrainingState|null} training   D14: non-null only in PHASE.TRAINING
+ * @property {string[]} mastered     D14: TRAINING_MOVE values mastered for this input (from training_progress; main.js
+ *           persists them). GE: the Box path skips the practice card when every DEFAULT move (guard, straight, hook)
+ *           is in it.
+ */
+
+/**
+ * D14 training (game-design §15). GE fills it; PD declares it. Items come from shared/training.js trainingItems(features).
+ * @typedef {Object} TrainingState
+ * @property {'camera'|'keyboard'|'replay'} input
+ * @property {Array<{id:string, kind:string, move:string|null}>} items   menu order (TRAINING_ITEM_KIND)
+ * @property {number}  index          current item's index in `items`
+ * @property {string}  item           current item id ('lesson:straight', 'mitt', 'defence', 'sparring', 'start_match')
+ * @property {string|null} lesson     TRAINING_MOVE of the current lesson, else null
+ * @property {number}  reps           successful reps so far (lesson), shots taken (mitt), steps done (defence)
+ * @property {number}  needed         reps needed (5; guard 3; rise 2), 10 shots, or the defence step count
+ * @property {{left:number, right:number}} perHand   successful reps per hand (≥ 2 each where it matters)
+ * @property {boolean} complete       the current item is done (camera: confirm now continues)
+ * @property {Array<{move:string|null, ok:boolean, reason?:string, hand?:'left'|'right', earlyMs?:number, lateMs?:number, t:number}>} results
+ *           recent attempts, newest last (≤ 10): the same payloads as training_rep
+ * @property {boolean} overlay        the training menu overlay is open (nothing counts as a rep)
+ * @property {{shot:{hand:'left'|'right', punchType:string, target:'head'|'body'}, until:number}|null} call
+ *           mitt drill: the current called shot and its 2.5 s deadline (sim s)
+ * @property {string|null} step       defence drill step: 'guard'|'interrupt'|'parry'|'counter'|'slip_duck'
+ * @property {{ok:number, of:number}|null} score   running score of the current drill
+ * @property {{hits:number, blocks:number, counters:number}|null} tally   free sparring
  */
 
 // ───────────────────────────────────────────── game events (§3.6) — NORMATIVE
@@ -284,6 +340,13 @@ export {};
 // |                |                                                                  | attack = the parried attack, null on a whiff)
 // | opponent_tired | level:'fresh'|'tired'|'exhausted'                                | D12: her tiredness level changes
 // | player_hurt    | until, cause:'big_hit'|'guard_break'|'two_hits'                  | D12: the player is hurt (refreshes, never stacks)
+// | training_item  | item                                                             | D14: a training item starts (also on repeat)
+// | training_rep   | move, ok, hand?, reason?, got?, earlyMs?, lateMs?, value?,       | D14: an attempt was judged; reason = a near_miss
+// |                | threshold? (value/threshold copied from the near_miss)           |
+// |                |                                                                  | reason, 'wrong_move' (with `got`), or a game reason
+// | training_call  | shot:{hand, punchType, target}                                   | D14: the mitt drill calls a shot
+// | training_result| item, score, perMove?                                            | D14: an item finished. score 0..1 (lesson: 1);
+// |                |                                                                  | perMove {move: 0..1} for drills (mastery)
 
 /** @typedef {'player'|'opponent'} Who */
 /** @typedef {'left'|'right'} Hand */
@@ -316,23 +379,35 @@ export {};
 /** @typedef {{type:'parry', t:number, result:'success'|'whiff', attack:Attack|null, hand:Hand}} ParryEvent */
 /** @typedef {{type:'opponent_tired', t:number, level:'fresh'|'tired'|'exhausted'}} OpponentTiredEvent */
 /** @typedef {{type:'player_hurt', t:number, until:number, cause:'big_hit'|'guard_break'|'two_hits'}} PlayerHurtEvent */
+/** @typedef {{type:'training_item', t:number, item:string}} TrainingItemEvent */
+/** @typedef {{type:'training_rep', t:number, move:string|null, ok:boolean, hand?:Hand, reason?:string, got?:string, earlyMs?:number, lateMs?:number, value?:number|null, threshold?:number|null}} TrainingRepEvent
+ *  value/threshold: copied from the near_miss when `reason` is a near-miss reason (the view never sees input events) */
+/** @typedef {{type:'training_call', t:number, shot:{hand:Hand, punchType:string, target:'head'|'body'}}} TrainingCallEvent */
+/** @typedef {{type:'training_result', t:number, item:string, score:number, perMove?:Object<string, number>}} TrainingResultEvent */
 
 /**
  * @typedef {PhaseEvent|RoundStartEvent|RoundEndEvent|MatchEndEvent|PunchThrownEvent|PunchRejectedEvent|
  *   HitEvent|PlayerHitEvent|BlockedEvent|WhiffEvent|GuardBrokenEvent|TelegraphEvent|StrikeEvent|
- *   StaggerEvent|OpeningEvent|GassedEvent|KnockdownEvent|CountEvent|GetupEvent|FeintCancelEvent|CoverEvent|PressureEvent|GuardSplitEvent|ParryEvent|OpponentTiredEvent|PlayerHurtEvent} GameEvent
+ *   StaggerEvent|OpeningEvent|GassedEvent|KnockdownEvent|CountEvent|GetupEvent|FeintCancelEvent|CoverEvent|PressureEvent|GuardSplitEvent|ParryEvent|OpponentTiredEvent|PlayerHurtEvent|
+ *   TrainingItemEvent|TrainingRepEvent|TrainingCallEvent|TrainingResultEvent} GameEvent
  */
 
 // ───────────────────────────────────────────── APIs (§3.7–3.9)
 
 /**
- * @typedef {{type:'start'} | {type:'cancel'} | {type:'skip_practice'} | {type:'pause'} | {type:'resume'} |
+ * @typedef {{type:'start', mode?:'match'|'training'} | {type:'cancel'} | {type:'skip_practice'} | {type:'pause'} | {type:'resume'} |
  *   {type:'restart', seed?:number} |
  *   {type:'goto_phase', phase:string} |
  *   {type:'force_attack', attack:Attack, side?:Hand, combo?:number} |
  *   {type:'debug_set', path:string, value:any} |
  *   {type:'set_round', n:number} |
- *   {type:'force_sequence', kind:'single'|'feint'|'combo', attack?:Attack, combo?:ComboName, side?:Hand, punish?:boolean}} SimCommand
+ *   {type:'force_sequence', kind:'single'|'feint'|'combo', attack?:Attack, combo?:ComboName, side?:Hand, punish?:boolean} |
+ *   {type:'training_next'} | {type:'training_repeat'} | {type:'training_back'} | {type:'training_goto', item:string} |
+ *   {type:'training_start_match'} | {type:'training_overlay', open:boolean} | {type:'training_progress', mastered:string[]}} SimCommand
+ * D14: start{mode:'training'} goes BOOT → CALIBRATION (when frame.calibration.wanted) → TRAINING, else straight to
+ * TRAINING; start{} / start{mode:'match'} is unchanged. training_start_match → FIGHT (round 1 countdown), no practice
+ * card; the calibration from training is reused. training_* commands outside TRAINING are ignored (training_progress
+ * works in any phase). main.js never sends training_next/repeat/back while the overlay state disagrees.
  * goto_phase, force_attack, debug_set, set_round and force_sequence are test/debug only (ignored with a console
  * warning unless allowDebug). force_sequence (D9): kind 'feint' needs attack swing_bridge|anchor_drop and takes
  * punish (force the punish roll); kind 'combo' takes combo; kind 'single' takes attack (like force_attack).

@@ -128,6 +128,11 @@ export const tuning = {
   // camera gestures for menu actions (D10)
   gestureConfirmHoldMs: 1000, // both fists in the guard zone: resume / skip practice / rematch
   gesturePauseHoldMs: 1000, // both hands open at face height: pause in FIGHT
+  // D14 near misses (input/coach.js; observation only, no commit rule changes)
+  nearMissDebounceMs: 400, // at most one near_miss per hand per 400 ms
+  nearMissStart: 0.5, // a motion episode starts at 0.5 × any classifier's threshold (also the too_slow floor)
+  nearMissEnd: 0.35, // ... and ends when every signal is below 0.35 × its threshold
+  nearMissGuardMs: 400, // a guard gate failing this long (both fists up near the guard) → a guard near_miss
   gestureCancelHoldMs: 1500, // the same pose cancels calibration
   gestureResumeMs: 3000, // 3-2-1 auto-resume after a camera-loss pause (guard held throughout)
   gestureBreakMs: 150, // a hold resets when its pose is broken for longer than this

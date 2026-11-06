@@ -46,9 +46,50 @@ function buildGlove(side) {
   return { group: g, mat, cuffMat, armMat, knuckle, thumb, s, pos: new THREE.Vector3(s * 0.16, -0.2, -0.44), rot: new THREE.Euler(), opacity: 1, init: false };
 }
 
+/** D14 ghost glove: a translucent glowing copy that loops a lesson's motion over the player's own glove. */
+function buildGhost(side) {
+  const gl = buildGlove(side);
+  const ghostMat = new THREE.MeshBasicMaterial({
+    color: 0x4fc8ff, transparent: true, opacity: 0.5, depthWrite: false,
+  });
+  gl.group.traverse((m) => { if (m.isMesh) m.material = ghostMat; });
+  gl.group.visible = false;
+  gl.group.renderOrder = 25;
+  return { ...gl, ghostMat };
+}
+
+/**
+ * Ghost motion for a lesson move at loop phase u (0..1): an offset from the guard pose in camera space.
+ * s = −1 left glove, +1 right glove (screen side). Returns null when that glove isn't part of the demo.
+ */
+export function ghostMotion(move, u, s, activeSide) {
+  const k = Math.sin(Math.PI * Math.min(1, u * 1.6)); // out-and-back in the first 60% of the loop, then rest
+  const mine = activeSide === null || (activeSide === 'left' ? s < 0 : s > 0);
+  if (!mine) return null;
+  switch (move) {
+    case 'straight': return { x: -s * 0.06 * k, y: 0.04 * k, z: -0.42 * k, rx: -0.5 * k };
+    case 'body': return { x: -s * 0.05 * k, y: -0.11 * k, z: -0.38 * k, rx: -0.25 * k };
+    case 'hook': return { x: -s * 0.2 * k, y: 0.02 * k, z: -0.12 * k, ry: s * 1.1 * k, rx: -0.2 * k };
+    case 'uppercut': {
+      const dip = u < 0.12 ? Math.sin((Math.PI / 2) * (u / 0.12)) : Math.max(0, 1 - (u - 0.12) * 6);
+      const up = u < 0.12 ? 0 : Math.sin(Math.PI * Math.min(1, (u - 0.12) / 0.5));
+      return { x: -s * 0.05 * (up + dip), y: -0.06 * dip + 0.2 * up, z: -0.2 * up, rx: 0.6 * up };
+    }
+    case 'parry': return { x: s * 0.13 * k, z: 0.03 * k, rz: s * 0.7 * k };
+    case 'guard': case 'rise': {
+      const g = Math.min(1, u * 3); // rise to the guard, then hold it
+      return { x: -s * 0.04 * g, y: 0.1 * g, z: 0.04 * g, rx: 0.2 * g, rz: -s * 0.25 * g };
+    }
+    default: return null;
+  }
+}
+
 export function createGloves(camera) {
   const gloves = { left: buildGlove('left'), right: buildGlove('right') };
   camera.add(gloves.left.group, gloves.right.group);
+  const ghosts = { left: buildGhost('left'), right: buildGhost('right') };
+  camera.add(ghosts.left.group, ghosts.right.group);
+  let ghostState = null; // for tests
   const anims = { left: null, right: null }; // punch_thrown {t, type, power}
   const bounce = { left: -Infinity, right: -Infinity }; // her guard blocked this hand's punch
   let blockJolt = -Infinity; // the player blocked her strike
@@ -62,8 +103,33 @@ export function createGloves(camera) {
     setAspect(aspect) {
       xMul = Math.max(0.5, Math.min(1, aspect / 1.4));
     },
+    /**
+     * D14 lesson demo (camera input only): loop the lesson move on a ghost glove, alternating hands for one-handed
+     * moves. move = null hides the ghosts.
+     */
+    updateGhost(move, now) {
+      const LOOP = 1.6;
+      const loop = Math.floor(now / LOOP);
+      const u = (now - loop * LOOP) / LOOP;
+      const twoHanded = move === 'guard' || move === 'rise';
+      const side = twoHanded ? null : loop % 2 ? 'right' : 'left';
+      ghostState = move ? { move, side, u } : null;
+      for (const hs of ['left', 'right']) {
+        const g = ghosts[hs];
+        const m = move ? ghostMotion(move, u, g.s, side) : null;
+        g.group.visible = !!m;
+        if (!m) continue;
+        const base = gloves[hs].pos;
+        g.group.position.set(base.x + (m.x ?? 0), base.y + (m.y ?? 0), base.z + (m.z ?? 0));
+        g.group.rotation.set(gloves[hs].rot.x + (m.rx ?? 0), gloves[hs].rot.y + (m.ry ?? 0), gloves[hs].rot.z + (m.rz ?? 0));
+        g.ghostMat.opacity = 0.35 + 0.2 * Math.sin(Math.PI * Math.min(1, u * 1.6));
+      }
+    },
     debug() {
-      return { left: gloves.left.group.position.toArray(), right: gloves.right.group.position.toArray(), opacity: gloves.left.opacity };
+      return {
+        left: gloves.left.group.position.toArray(), right: gloves.right.group.position.toArray(), opacity: gloves.left.opacity,
+        ghost: ghostState && { ...ghostState, left: ghosts.left.group.visible ? ghosts.left.group.position.toArray() : null, right: ghosts.right.group.visible ? ghosts.right.group.position.toArray() : null },
+      };
     },
     onEvent(e) {
       if (e.type === 'punch_thrown') anims[e.hand] = { t: e.t, type: e.punchType, power: e.power, body: e.target === 'body' };

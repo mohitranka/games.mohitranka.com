@@ -124,7 +124,7 @@ export function updateTired(w) {
 
 /** Her stamina changes (attack costs, body drain, regen, rest). No-op unless features.body. */
 export function addOppStamina(w, delta) {
-  if (!featureOn(w, 'body')) return;
+  if (!featureOn(w, 'body') || w.state.training) return; // D14: her stamina never changes in training
   const o = w.state.opponent;
   o.stamina = Math.min(o.maxStamina, Math.max(0, o.stamina + delta));
   updateTired(w);
@@ -250,6 +250,7 @@ export function toCircle(w, { resetCooldown = false } = {}) {
 }
 
 function antiSpam(w) {
+  if (w.state.training) return false; // D14: no anti-spam in training
   return w.state.player.stamina < w.T.antiSpamBelow;
 }
 
@@ -402,7 +403,8 @@ export function startSequence(w, { kind, combo = null, steps, punish = null }) {
   if (o.feint) ai.feintPunish = punish;
   const first = steps[0].attack;
   const tired = tiredMult(w, T.tiredWindupMult, T.exhaustedWindupMult); // D12: longer only; the floor holds
-  const windup = Math.max(T.telegraphFloor, tired * (kind === 'punish' ? T.punishWindup : T.windup[first][roundIndex(w.state)]));
+  const scale = tired * (ai.windupScale ?? 1); // D14: slow training strikes
+  const windup = Math.max(T.telegraphFloor, scale * (kind === 'punish' ? T.punishWindup : T.windup[first][roundIndex(w.state)]));
   telegraphStep(w, 0, windup);
 }
 
@@ -548,7 +550,7 @@ function circleUpdate(w, dt) {
   syncOpponent(w);
   if (ai.decisionTime >= T.decisionInterval - EPS) {
     ai.decisionTime -= T.decisionInterval;
-    if (ai.circleTime >= currentCooldown(w) - EPS) aiPickAndStart(w);
+    if (!ai.parked && ai.circleTime >= currentCooldown(w) - EPS) aiPickAndStart(w); // parked: training scripts
   }
 }
 

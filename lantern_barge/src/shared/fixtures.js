@@ -84,6 +84,8 @@ export function createInitialState(seed = 1) {
     calibSession: 0,
     round: { n: 1, of: 3, timeLeft: 60, clockRunning: false, countdown: null, restLeft: null },
     practice: null,
+    training: null, // D14: TrainingState in PHASE.TRAINING
+    mastered: [], // D14: from training_progress (main.js)
     result: { winner: null, method: null },
     player: createPlayer(),
     opponent: createOpponent(),
@@ -145,5 +147,6 @@ export function createInputFrame(t = 0, source = 'none') {
     spot: { kGuardDrift: null, hint: null },
     gesture: { kind: null, progress: 0, fired: false, available: [] }, // D10
     features: NO_FEATURES, // main.js replaces it with the run's flags
+    meter: null, // D14: only while training or with ?debug=1
   };
 }

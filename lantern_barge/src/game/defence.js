@@ -38,10 +38,10 @@ export function resolveParry(w, ev, snapshotAt) {
   const T = w.T;
   const o = st.opponent;
   const ai = w.ctx.ai;
-  if (st.player.down || isHurt(w)) return; // D12: parry and dodge are disabled while hurt
+  if (st.player.down || isHurt(w)) return null; // D12: parry and dodge are disabled while hurt
   const hitTime = ev.tOnset - T.punchBackdate;
   const snap = snapshotAt(hitTime);
-  if (snap.state !== OPP_STATE.TELEGRAPH && snap.state !== OPP_STATE.ATTACK) return; // nothing to parry
+  if (snap.state !== OPP_STATE.TELEGRAPH && snap.state !== OPP_STATE.ATTACK) return null; // nothing to parry
   const [open, close] = parryWindow(T, snap.contactAt ?? -Infinity);
   const inWindow = snap.contactAt !== null && hitTime >= open - EPS && hitTime <= close + EPS;
   const real = !snap.feint && PARRYABLE.has(snap.attack);
@@ -53,13 +53,21 @@ export function resolveParry(w, ev, snapshotAt) {
     st.player.stats.parries = (st.player.stats.parries ?? 0) + 1;
     w.emit(EVENT.PARRY, { result: PARRY_RESULT.SUCCESS, attack: snap.attack, hand: ev.hand });
     parryRecover(w);
-    return;
+    return { result: PARRY_RESULT.SUCCESS, attack: snap.attack };
   }
   w.emit(EVENT.PARRY, { result: PARRY_RESULT.WHIFF, attack: null, hand: ev.hand });
+  // the verdict for training feedback (D14): why, and early / late in ms against the window
+  const verdict = { result: PARRY_RESULT.WHIFF, attack: null };
+  if (!real) verdict.reason = snap.feint ? 'feint' : 'not_parryable';
+  else if (!glove) verdict.reason = 'wrong_hand';
+  else if (snap.contactAt !== null && hitTime < open - EPS) Object.assign(verdict, { reason: 'early', earlyMs: Math.round((open - hitTime) * 1000) });
+  else if (snap.contactAt !== null && hitTime > close + EPS) Object.assign(verdict, { reason: 'late', lateMs: Math.round((hitTime - close) * 1000) });
+  else verdict.reason = 'late';
   // that glove is out of guard from the backdated onset (P1); later guard samples in that span stop counting
   const until = Math.min(hitTime, st.time) + T.parryWhiffLock;
   w.ctx.parryLockUntil = Math.max(w.ctx.parryLockUntil ?? -1, until);
   for (const s of w.ctx.guardSamples) if (s.t >= hitTime - EPS && s.t < until - EPS) s.ok = false;
+  return verdict;
 }
 
 export function parryLocked(w) {

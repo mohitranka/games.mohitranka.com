@@ -19,7 +19,11 @@ import { resolveParry, parryLocked } from './defence.js';
 import { createAIContext, forceAttack, forceSequence, toCircle, syncOpponent } from './opponent-ai.js';
 import { createPressureContext } from './pressure.js';
 import {
-  freshPlayer, freshOpponent, enterCalibration, enterPractice, enterBoot, startMatch, gotoPhase, updatePhase,
+  isTraining, trainingLive, trainingStamina, trainingCommand, trainingPunch, trainingNearMiss, trainingParry, seedProgress,
+} from './training.js';
+import {
+  freshPlayer, freshOpponent, enterCalibration, enterBoot, startMatch, gotoPhase, updatePhase,
+  enterTraining, enterPracticeOrMatch,
 } from './phases.js';
 
 function createCtx(rng, T) {
@@ -41,6 +45,8 @@ function initialState(seed, T) {
   st.opponent = freshOpponent(T);
   st.round.of = T.roundCount;
   st.round.timeLeft = T.roundLength;
+  st.training = null; // D14: non-null only in TRAINING
+  st.mastered = st.mastered ?? []; // D14: seeded by main (training_progress)
   return st;
 }
 
@@ -92,7 +98,7 @@ export function createSim({ seed = 1, tuning = defaultTuning, allowDebug = false
     reset(s ?? old.seed);
     Object.assign(w.state, {
       time: old.time, tick: old.tick, calibSession: old.calibSession, inputKind: old.inputKind,
-      phase: old.phase, phaseStart: old.phaseStart,
+      phase: old.phase, phaseStart: old.phaseStart, mastered: old.mastered, // D14: progress survives a rematch
     });
     startMatch(w);
   }
@@ -138,8 +144,21 @@ export function createSim({ seed = 1, tuning = defaultTuning, allowDebug = false
     switch (cmd.type) {
       case COMMAND.START:
         if (st.phase !== PHASE.BOOT) break;
+        w.ctx.mode = cmd.mode === 'training' ? 'training' : 'match'; // D14 (START_MODE)
         if (w.frame?.calibration?.wanted) enterCalibration(w); // camera, or replay with {calibrate:true}
-        else enterPractice(w);
+        else if (w.ctx.mode === 'training') enterTraining(w);
+        else enterPracticeOrMatch(w); // the practice card is skipped once the defaults are mastered
+        break;
+      case 'training_progress': // D14: main seeds stored mastery (any phase)
+        seedProgress(st, cmd.mastered);
+        break;
+      case 'training_next':
+      case 'training_back':
+      case 'training_repeat':
+      case 'training_goto':
+      case 'training_overlay':
+      case 'training_start_match':
+        if (!trainingCommand(w, cmd, { startMatch })) console.warn(`[sim] ${cmd.type} ignored outside TRAINING`);
         break;
       case COMMAND.CANCEL:
         if (st.phase === PHASE.CALIBRATION) enterBoot(w);
@@ -237,13 +256,26 @@ export function createSim({ seed = 1, tuning = defaultTuning, allowDebug = false
       if (!st.paused) {
         // regen first, so the tick on which gassed ends already has stamina > 0 for a punch
         if (st.phase === PHASE.FIGHT && st.round.countdown === null) regen(w, dt);
+        else if (isTraining(w) && trainingStamina(w) && !st.training.overlay) regen(w, dt); // D14: sparring
+        const training = isTraining(w);
         for (const ev of w.frame.events ?? []) {
           if (ev.type === INPUT_EVENT.PARRY) {
-            if (on('parry') && liveRound()) resolveParry(w, ev, (h) => snapshotAt(w, h)); // D12, behind ?next=1
+            if (!on('parry')) continue; // D12, behind ?next=1
+            if (training) trainingParry(w, ev, (ww, e) => resolveParry(ww, e, (h) => snapshotAt(ww, h)));
+            else if (liveRound()) resolveParry(w, ev, (h) => snapshotAt(w, h));
+            continue;
+          }
+          if (ev.type === (INPUT_EVENT.NEAR_MISS ?? 'near_miss')) {
+            if (training) trainingNearMiss(w, ev); // D14
             continue;
           }
           if (ev.type !== INPUT_EVENT.PUNCH) continue;
           if (ev.punchType === PUNCH.UPPERCUT && !on('uppercut')) continue; // D11 is behind ?next=1
+          if (training) {
+            const bodyOk = on('body') && (ev.punchType === PUNCH.STRAIGHT || ev.punchType === PUNCH.HOOK);
+            const target = bodyOk && ev.target === 'body' ? 'body' : 'head';
+            if (!trainingPunch(w, ev, target)) continue; // lessons and the mitt drill: reps only
+          }
           resolvePlayerPunch(w, ev);
         }
         updatePhase(w, dt);
@@ -253,7 +285,7 @@ export function createSim({ seed = 1, tuning = defaultTuning, allowDebug = false
       if (s2.phase !== PHASE.ROUND_END) s2.round.restLeft = null;
       else if (!s2.paused) s2.round.restLeft = Math.max(0, T.restLength - (s2.time - s2.phaseStart));
       updateFlags(w);
-      if (w.state.phase === PHASE.FIGHT && !w.state.paused) syncOpponent(w);
+      if ((w.state.phase === PHASE.FIGHT || trainingLive(w)) && !w.state.paused) syncOpponent(w);
       if (!w.state.paused) pushSnapshot(w);
       return w.out;
     },

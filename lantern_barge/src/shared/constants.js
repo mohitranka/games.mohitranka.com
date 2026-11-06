@@ -27,6 +27,7 @@ export const PHASE = Object.freeze({
   FIGHT: 'fight',
   ROUND_END: 'round_end',
   MATCH_END: 'match_end',
+  TRAINING: 'training', // D14: BOOT → (CALIBRATION) → TRAINING → FIGHT (training_start_match: no practice card)
 });
 
 // D5a: Shell cut entirely.
@@ -56,7 +57,7 @@ export const COVER_REASON = Object.freeze({ RECOVER: 'recover', HURT: 'hurt', CI
 
 export const RESULT_METHOD = Object.freeze({ KO: 'ko', POINTS: 'points' });
 
-export const INPUT_EVENT = Object.freeze({ PUNCH: 'punch', GUARD: 'guard', PARRY: 'parry' }); // parry: D12
+export const INPUT_EVENT = Object.freeze({ PUNCH: 'punch', GUARD: 'guard', PARRY: 'parry', NEAR_MISS: 'near_miss' }); // parry: D12; near_miss: D14
 
 // D12
 export const TARGET = Object.freeze({ HEAD: 'head', BODY: 'body' });
@@ -92,6 +93,10 @@ export const EVENT = Object.freeze({
   PARRY: 'parry', // D12: game event {result, attack, hand}
   OPPONENT_TIRED: 'opponent_tired', // D12
   PLAYER_HURT: 'player_hurt', // D12
+  TRAINING_ITEM: 'training_item', // D14
+  TRAINING_REP: 'training_rep', // D14
+  TRAINING_CALL: 'training_call', // D14
+  TRAINING_RESULT: 'training_result', // D14
 });
 export const EVENT_TYPES = Object.freeze(Object.values(EVENT));
 
@@ -105,6 +110,14 @@ export const COMMAND = Object.freeze({
   PAUSE: 'pause',
   RESUME: 'resume',
   RESTART: 'restart',
+  // D14 training (TRAINING phase only; ignored elsewhere)
+  TRAINING_NEXT: 'training_next',
+  TRAINING_REPEAT: 'training_repeat',
+  TRAINING_BACK: 'training_back',
+  TRAINING_GOTO: 'training_goto', // {item}: jump to any item from the menu
+  TRAINING_START_MATCH: 'training_start_match',
+  TRAINING_OVERLAY: 'training_overlay', // {open}
+  TRAINING_PROGRESS: 'training_progress', // {mastered}: main.js → sim, any phase (stored progress for this input)
   // test/debug only (ignored with a console warning unless the sim was created with allowDebug)
   GOTO_PHASE: 'goto_phase',
   FORCE_ATTACK: 'force_attack',
@@ -144,6 +157,52 @@ export const CALIB_HINT = Object.freeze({
   FISTS_TOO_LOW: 'fists_too_low', // palm centre below framingYMax
   GUARD_TO_CHIN: 'guard_to_chin', // ?next=1: fists > 0.10 fh below the bottom of the face box
 });
+
+// ───────────────────────────────────────────── D14 training (game-design §15)
+export const START_MODE = Object.freeze({ MATCH: 'match', TRAINING: 'training' }); // start{mode}; absent = match
+
+/** Trainable moves, in lesson order. shared/training.js filters them by the active features. */
+export const TRAINING_MOVE = Object.freeze({
+  GUARD: 'guard',
+  STRAIGHT: 'straight',
+  HOOK: 'hook',
+  UPPERCUT: 'uppercut', // features.uppercut
+  BODY: 'body', // features.body
+  PARRY: 'parry', // features.parry
+  RISE: 'rise', // features.rise ("getting up")
+  SLIP: 'slip', // features.slip (D13)
+  DUCK: 'duck', // features.slip (D13)
+});
+
+/** Item kinds; item ids are 'lesson:<move>' | 'mitt' | 'defence' | 'sparring' | 'start_match'. */
+export const TRAINING_ITEM_KIND = Object.freeze({
+  LESSON: 'lesson',
+  MITT: 'mitt',
+  DEFENCE: 'defence',
+  SPARRING: 'sparring',
+  START_MATCH: 'start_match',
+});
+
+/** Input near_miss reasons (§15.3). Guard reasons come from the guard check, the rest from a failed motion. */
+export const NEAR_MISS_REASON = Object.freeze({
+  FIST_OPEN: 'fist_open',
+  TOO_SLOW: 'too_slow',
+  TOO_SHORT: 'too_short',
+  NOT_EXTENDED: 'not_extended',
+  WRONG_DIRECTION: 'wrong_direction',
+  TOO_VERTICAL: 'too_vertical',
+  TOO_SIDEWAYS: 'too_sideways',
+  NOT_LOW: 'not_low',
+  NOT_IN_POCKET: 'not_in_pocket',
+  BOTH_HANDS: 'both_hands',
+  LOCKED_OUT: 'locked_out',
+  OUT_OF_FRAME: 'out_of_frame',
+  HAND_OUT_OF_ZONE: 'hand_out_of_zone',
+  TOO_CLOSE: 'too_close',
+  TOO_FAR: 'too_far',
+});
+
+export const TRAINING_STORAGE_KEY = 'lanternBarge.training.v1';
 
 export const THREE_VERSION = '0.170.0';
 export const MP_VERSION = '0.10.35';

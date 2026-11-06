@@ -325,6 +325,10 @@ export function createRecognizer({ tuning }) {
     inGuardZone(hand) {
       return guard[hand];
     },
+    /** D14 coach: this hand's live classifier state. READ-ONLY (no copy, called every result). */
+    peek(hand) {
+      return rec[hand];
+    },
     debug() {
       return structuredClone({ rec, guard });
     },

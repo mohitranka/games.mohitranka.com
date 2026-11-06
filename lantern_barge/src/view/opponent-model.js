@@ -255,8 +255,9 @@ export function createOpponentModel(glowTex) {
       a.pad.visible = mitt;
       a.gloveMat.color.setHex(mitt ? C.mitt : C.oppGlove);
       if (mitt) {
-        // pads face the player: aim the glove's +z at the camera-ish direction
-        a.glove.quaternion.setFromEuler(new THREE.Euler(-0.15, 0, a.s * 0.2));
+        // pads face the player by default; D14 mitt work turns them (inward for hooks, down for uppercuts)
+        const mr = side === 'left' ? p.lMittRot : p.rMittRot;
+        a.glove.quaternion.setFromEuler(new THREE.Euler(mr?.[0] ?? -0.15, mr?.[1] ?? 0, mr?.[2] ?? a.s * 0.2));
       }
       const g = side === 'left' ? p.lGlow : p.rGlow;
       a.glow.material.color.setHex(g.color);

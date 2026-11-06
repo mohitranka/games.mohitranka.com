@@ -192,6 +192,14 @@ export function createRenderer({ canvas, hudRoot }) {
         cue(e.t, 'hurt');
         got.push('blur', 'sway');
         break;
+      case 'training_call': // D14 mitt drill: she presents the called mitt
+        ctx.trainingCall = e.shot ?? null;
+        got.push('pose');
+        break;
+      case 'training_item':
+      case 'training_result':
+        ctx.trainingCall = null;
+        break;
       case 'guard_split': { // D11: gloves knocked apart; she tucks once the split window closes
         ctx.split = { t: e.t };
         ctx.tuck = { t: Number.isFinite(e.until) ? e.until : e.t + 0.4 };
@@ -266,6 +274,15 @@ export function createRenderer({ canvas, hudRoot }) {
     update(state, events, input, alpha = 0) {
       if (state.time < lastSimTime - 0.5) resetAll(); // sim reset
       ctx.features = featuresOf(input, state);
+      // D14 training context for her mitt work
+      const tr = state.phase === 'training' ? state.training : null;
+      const camInput = input?.source === 'camera' || input?.source === 'replay';
+      const trKind = tr ? (tr.items?.[tr.index]?.kind ?? String(tr.item ?? '').split(':')[0]) : null;
+      ctx.training = tr ? {
+        lesson: trKind === 'lesson' ? tr.lesson : null,
+        call: trKind === 'mitt' ? (tr.call?.shot ?? ctx.trainingCall) : null,
+        demoTap: trKind === 'lesson' && !camInput && !tr.overlay,
+      } : null;
       lastSimTime = state.time;
       for (const e of events) onEvent(e, state);
 
@@ -278,6 +295,11 @@ export function createRenderer({ canvas, hudRoot }) {
         last.pose = computeOpponentPose(state, presTime, ctx);
         tamsin.setPose(last.pose);
         gloves.update(state, input, presTime);
+        // D14 camera lesson demo: the ghost glove loops the move over the player's glove
+        const camIn = input?.source === 'camera' || input?.source === 'replay';
+        const tr = state.phase === 'training' ? state.training : null;
+        const lessonNow = tr && (tr.items?.[tr.index]?.kind ?? String(tr.item ?? '').split(':')[0]) === 'lesson';
+        gloves.updateGhost(lessonNow && !tr.overlay && camIn ? tr.lesson : null, presTime);
       }
       const o = state.opponent;
       const foghorn = o.attack === 'anchor_drop' && o.state === 'telegraph' ? 1 : 0;

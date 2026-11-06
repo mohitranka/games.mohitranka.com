@@ -32,6 +32,10 @@ export function createEventSource({ clock, tuning = defaultTuning, profile = DEF
   const lockoutUntil = { left: -Infinity, right: -Infinity }; // guard lockout: 250 ms, 350 ms after an uppercut (D11)
   const anim = { left: null, right: null }; // {type, t0}
 
+  // D14 training: keyboard meter (key-press indicator)
+  let training = false;
+  const pressed = { left: null, right: null }; // {action, t}
+
   // injection state
   let overrideGuard = null; // 'none' | 'full' | null
   let overrideTrackingOk = null; // true | false | null (tests: simulate a camera stall, D10 auto-resume)
@@ -130,6 +134,14 @@ export function createEventSource({ clock, tuning = defaultTuning, profile = DEF
     if (drain) frame.seq = ++seq;
     else frame.seq = seq;
     if (kind === 'keyboard') keyboardHands(frame, t);
+    if (kind === 'keyboard' && training) {
+      const held = (h) => {
+        const p = pressed[h];
+        if (p && t >= p.t && t - p.t < tuning.keyboardPunchAnimMs / 1000) return p.action;
+        return keyGuard ? 'guard' : null;
+      };
+      frame.meter = { kind: 'keyboard', left: { pressed: held('left') }, right: { pressed: held('right') } };
+    }
     frame.calibration = { ...calib };
     if (drain) frame.events = takeDue(kbQueue, t).sort((a, b) => a.tCommit - b.tCommit);
     return frame;
@@ -156,6 +168,10 @@ export function createEventSource({ clock, tuning = defaultTuning, profile = DEF
       return buildFrame(t, false);
     },
 
+    /** D14: the keyboard meter (pressed keys) while training. Keyboard has no input-side near misses. */
+    setTraining(on) {
+      training = !!on;
+    },
     beginCalibration(session) {
       calib = { ...createCalibrationStatus(), session, step: 'done', done: true };
     },
@@ -187,6 +203,7 @@ export function createEventSource({ clock, tuning = defaultTuning, profile = DEF
         lockoutUntil[hand] = t + (punchType === 'uppercut' ? tuning.uppercutGuardLockoutMs : tuning.guardLockoutMs) / 1000;
       }
       anim[hand] = { type: punchType, t0: t };
+      pressed[hand] = { action: target === 'body' ? 'body' : punchType, t };
       kbQueue.push({
         type: 'punch',
         id: nextId++,
@@ -206,6 +223,7 @@ export function createEventSource({ clock, tuning = defaultTuning, profile = DEF
       const t = nowS();
       if (t - lastParryAt[hand] < tuning.parryRefractoryMs / 1000) return false;
       lastParryAt[hand] = t;
+      pressed[hand] = { action: 'parry', t };
       kbQueue.push({ type: 'parry', id: nextId++, hand, tOnset: t, tCommit: t });
       return true;
     },
@@ -242,6 +260,13 @@ export function createEventSource({ clock, tuning = defaultTuning, profile = DEF
     pushParry(e = {}) {
       const tCommit = e.tCommit ?? nowS() - latencyMs / 1000;
       const ev = { type: 'parry', id: e.id ?? nextId++, hand: e.hand ?? 'left', tOnset: e.tOnset ?? tCommit, tCommit };
+      injQueue.push(ev);
+      return ev;
+    },
+    /** D14 test injection: a near_miss input event (lands on the next sample()). */
+    pushNearMiss(e = {}) {
+      const t = e.t ?? nowS();
+      const ev = { type: 'near_miss', t, tCommit: t, hand: e.hand ?? 'left', kind: e.kind ?? 'straight', reason: e.reason ?? 'too_slow', value: e.value ?? null, threshold: e.threshold ?? null };
       injQueue.push(ev);
       return ev;
     },

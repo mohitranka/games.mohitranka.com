@@ -37,7 +37,25 @@ export const EVENT_VOICES = Object.freeze({
   parry: 'clack | soft-whoosh', // D12
   opponent_tired: 'her-breath', // D12
   player_hurt: 'daze', // D12 (plus the low-pass and heartbeat while hurt)
+  training_rep: 'rep-tick | rep-buzz', // D14
+  training_call: 'mitt-call', // D14: "Left straight!" (shown as text too)
+  training_result: 'bell',
+  training_item: 'swoosh',
+  near_miss: 'soft-tick',
 });
+
+// D14 mitt calls: each word as syllables of (vowel formants, pitch contour) so the bark has the call's rhythm.
+const WORD_SYLLABLES = {
+  left: [[[600, 1800], 1]], right: [[[750, 1200], 1]], straight: [[[480, 2000], 1.1]], hook: [[[420, 1000], 0.9]],
+  uppercut: [[[650, 1250], 0.9], [[500, 1500], 0.6], [[650, 1250], 0.9]], to: [[[320, 900], 0.5]], the: [[[500, 1500], 0.4]],
+  body: [[[700, 1100], 0.9], [[300, 2300], 0.7]],
+};
+export function callWords(shot) {
+  if (!shot) return [];
+  const w = [shot.hand, shot.punchType];
+  if (shot.target === 'body') w.push('to', 'the', 'body');
+  return w.filter((x) => WORD_SYLLABLES[x]);
+}
 
 /**
  * The exact voices an event plays (D9 telegraph variants included). Pure, so tests can check the plan
@@ -77,6 +95,8 @@ export function voicesFor(e, state) {
     case 'opponent_tired': return e.level === 'fresh' ? [] : ['her-breath'];
     case 'player_hurt': return ['daze'];
     case 'count': return [e.who === 'player' ? 'woodblock-muffled' : 'woodblock'];
+    case 'training_rep': return [e.ok ? 'rep-tick' : e.detected ? 'rep-buzz' : 'soft-tick'];
+    case 'training_call': return ['mitt-call'];
     case 'blocked': return [e.by === 'player' && e.punchType === 'uppercut' ? 'elbow-thud' : EVENT_VOICES.blocked];
     case 'guard_split': return ['leather-clap', 'grunt'];
     default: return EVENT_VOICES[e.type] ? [EVENT_VOICES[e.type]] : [];
@@ -356,6 +376,30 @@ export function createAudio() {
       tone({ f0: 440, t, a: 0.01, peak: 0.04, d: 0.9 });
       tone({ f0: 446, t, a: 0.01, peak: 0.04, d: 0.9 });
     },
+    repTick(t) { // a bright two-note "got it"
+      tone({ f0: 1320, t, a: 0.003, peak: 0.12, d: 0.12 });
+      tone({ f0: 1760, t: t + 0.07, a: 0.003, peak: 0.12, d: 0.18 });
+    },
+    repBuzz(t) { // "not that one"
+      tone({ type: 'square', f0: 180, f1: 150, t, a: 0.005, peak: 0.05, d: 0.18, filter: { type: 'lowpass', f: 900 } });
+    },
+    softTick(t) {
+      tone({ f0: 660, t, a: 0.002, peak: 0.06, d: 0.06 });
+    },
+    mittCall(t, shot) { // Tamsin calls the shot: "Left straight!", "Right hook to the body!"
+      let at = t;
+      callWords(shot).forEach((w, wi, arr) => {
+        const syl = WORD_SYLLABLES[w];
+        syl.forEach(([[f1, f2], stress], si) => {
+          const last = wi === arr.length - 1 && si === syl.length - 1;
+          const dur = 0.07 + 0.06 * stress + (last ? 0.08 : 0);
+          const f0 = 215 + 35 * stress + (last ? 25 : 0);
+          V.vowel(at, { f0, f1: last ? f0 * 0.82 : f0 * 0.95, formants: [[f1, 7, 1.3], [f2, 9, 0.7]], dur, peak: 0.09 + 0.05 * stress });
+          at += dur + 0.025;
+        });
+        at += 0.04;
+      });
+    },
     heartbeat(t) {
       tone({ f0: 62, f1: 45, t, a: 0.004, peak: 0.32, d: 0.12 });
       tone({ f0: 58, f1: 42, t: t + 0.18, a: 0.004, peak: 0.22, d: 0.12 });
@@ -448,6 +492,15 @@ export function createAudio() {
         else V.softWhoosh(t, myPan);
         break;
       case 'player_hurt': V.daze(t); break;
+      case 'training_rep':
+        if (e.ok) V.repTick(t);
+        else if (e.detected) V.repBuzz(t);
+        else V.softTick(t);
+        break;
+      case 'near_miss': V.softTick(t); break;
+      case 'training_call': V.mittCall(t, e.shot); break;
+      case 'training_result': V.bell(t, 1, 880, 0.18); break;
+      case 'training_item': V.swoosh(t, 0.04); break;
       case 'getup': V.crowd(t, 'cheer'); break;
       case 'round_start': V.bell(t, 2); break;
       case 'round_end': V.bell(t, 1); break;

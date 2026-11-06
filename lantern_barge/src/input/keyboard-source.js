@@ -7,7 +7,7 @@
 import { activeKeymap } from '../shared/keymap.js';
 import { NO_FEATURES } from '../shared/features.js';
 
-const MENU_KEYS = new Set(['Enter', 'KeyP', 'Escape']);
+const MENU_KEYS = new Set(['Enter', 'KeyP', 'Escape', 'KeyR', 'Backspace', 'KeyM']); // R / Backspace / M: D14 training menu
 const isTextField = (el) => !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
 const isControl = (el) => !!el && ['BUTTON', 'A', 'SUMMARY'].includes(el.tagName);
 

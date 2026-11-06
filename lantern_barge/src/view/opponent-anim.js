@@ -349,6 +349,50 @@ function getupPose(o, tIn, t) {
   return p;
 }
 
+// ───────────────────────────────────────────── D14 mitt work
+
+/** Where a mitt goes for a shot (her side sx = +1 left / −1 right) and which way the pad faces. */
+function mittFor(kind, target, sx) {
+  if (target === 'body') return { pos: [sx * 0.2, 1.12, 0.42], rot: [-0.05, 0, sx * 0.15] }; // low, at her ribs
+  switch (kind) {
+    case 'hook': return { pos: [sx * 0.34, 1.5, 0.3], rot: [-0.1, -sx * 1.15, sx * 0.1] }; // out wide, facing in
+    case 'uppercut': return { pos: [sx * 0.12, 1.3, 0.42], rot: [1.25, 0, 0] }; // low, facing down
+    default: return { pos: [sx * 0.18, 1.48, 0.45], rot: [-0.15, 0, sx * 0.2] }; // straight: up front
+  }
+}
+
+/**
+ * Lesson: both mitts presented for the lesson's punch (low for body shots). Mitt drill: the called mitt (the one the
+ * player's called hand hits: player's left → her right) is presented, the other tucked. Keyboard demo: the mitt for
+ * the glowing key taps forward on a loop.
+ */
+function presentMitts(p, tr, t) {
+  const call = tr.call;
+  const kindOf = (m) => (m === 'body' ? 'straight' : m);
+  if (call) {
+    const sx = call.hand === 'left' ? -1 : 1;
+    const m = mittFor(call.punchType, call.target, sx);
+    const tuck = [-sx * 0.1, 1.32, 0.24];
+    if (sx > 0) { p.lHand = m.pos; p.lMittRot = m.rot; p.rHand = tuck; } else { p.rHand = m.pos; p.rMittRot = m.rot; p.lHand = tuck; }
+  } else if (tr.lesson && ['straight', 'hook', 'uppercut', 'body'].includes(tr.lesson)) {
+    const target = tr.lesson === 'body' ? 'body' : 'head';
+    const l = mittFor(kindOf(tr.lesson), target, 1);
+    const r = mittFor(kindOf(tr.lesson), target, -1);
+    p.lHand = l.pos; p.lMittRot = l.rot;
+    p.rHand = r.pos; p.rMittRot = r.rot;
+  }
+  if (tr.demoTap) { // keyboard lesson demo: she taps the mitt for the key that's glowing (alternating hands)
+    const LOOP = 1.4;
+    const n = Math.floor(t / LOOP);
+    const u = (t - n * LOOP) / LOOP;
+    if (u < 0.25) {
+      const k = Math.sin(Math.PI * (u / 0.25));
+      const key = n % 2 ? 'lHand' : 'rHand'; // player's left key first → her right mitt
+      p[key] = [p[key][0], p[key][1], p[key][2] + 0.1 * k];
+    }
+  }
+}
+
 // ───────────────────────────────────────────── entry
 
 /**
@@ -362,13 +406,17 @@ export function computeOpponentPose(state, t, ctx = {}) {
   const tIn = Math.max(0, t - o.stageStart);
   let p;
 
-  if (state.phase === 'practice' || o.mitts) {
+  // mitts: the practice card, and Training (D14) whenever she isn't throwing (parry/slip lessons and the defence drill
+  // use her normal attack poses)
+  if (state.phase === 'practice' || (o.mitts && (o.state === 'circle' || state.phase !== 'training'))) {
     p = circlePose(state, t * 0.6, 'high');
     p.lHand = [0.22, 1.46, 0.42];
     p.rHand = [-0.22, 1.46, 0.42];
     p.lPole = [1, -0.6, -0.4];
     p.rPole = [-1, -0.6, -0.4];
     p.mitts = true;
+    const tr = ctx.training;
+    if (tr && state.phase === 'training') presentMitts(p, tr, t);
     // the mitt on the punching hand's side gives a little
     if (ctx.lastPunch) {
       const age = t - ctx.lastPunch.t;

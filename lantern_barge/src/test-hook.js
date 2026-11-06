@@ -82,6 +82,12 @@ export function installTestHook(core) {
         if (hand !== 'left' && hand !== 'right') throw new Error(`inject.parry: bad hand ${hand}`);
         return structuredClone(core.events.pushParry({ hand, tOnset, tCommit, id }));
       },
+      /** D14: a near_miss input event {hand, kind, reason, value?, threshold?}, on the next sample() */
+      nearMiss({ hand = 'left', kind = 'straight', reason = 'too_slow', value = null, threshold = null } = {}) {
+        need();
+        if (hand !== 'left' && hand !== 'right') throw new Error(`inject.nearMiss: bad hand ${hand}`);
+        return structuredClone(core.events.pushNearMiss({ hand, kind, reason, value, threshold }));
+      },
       /** D10 tests: force frame.tracking.ok (false = camera lost); null releases */
       trackingOk(v) {
         need();

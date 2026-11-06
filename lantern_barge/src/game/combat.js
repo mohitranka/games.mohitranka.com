@@ -18,6 +18,7 @@ import {
   addOppStamina,
 } from './opponent-ai.js';
 import { isHurt, noteStrikeOutcome } from './defence.js';
+import { trainingLive, trainingStamina, onTrainingHit, onTrainingBlocked, onTrainingStrike } from './training.js';
 import { knockdown } from './phases.js';
 import { noteCounter } from './pressure.js';
 
@@ -184,7 +185,9 @@ function addDamage(w, by, amount) {
 // ───────────────────────────────────────────── player punches
 
 /** Is a round live enough for punches to cost stamina and resolve? (countdown and rest only acknowledge) */
-function punchesResolve(st) {
+function punchesResolve(w) {
+  const st = w.state;
+  if (trainingLive(w)) return true; // D14: parry lesson, defence drill and sparring (damage off)
   if (st.phase !== PHASE.FIGHT || st.round.countdown !== null) return false;
   return st.round.clockRunning || !!st.opponent.down;
 }
@@ -207,8 +210,11 @@ export function resolvePlayerPunch(w, ev) {
   const target = bodyOk && ev.target === TARGET.BODY ? TARGET.BODY : TARGET.HEAD;
   const body = target === TARGET.BODY;
 
-  const live = punchesResolve(st);
-  if (live && (isGassed(p, t) || p.stamina <= 0)) {
+  const live = punchesResolve(w);
+  const training = !!st.training; // D14: training.damage = false; stamina only where training.stamina
+  const staminaOn = !training || trainingStamina(w);
+  const pay = (amount) => { if (staminaOn) spend(w, amount); };
+  if (live && staminaOn && (isGassed(p, t) || p.stamina <= 0)) {
     w.emit(EVENT.PUNCH_REJECTED, { id, hand, reason: 'gassed' });
     return;
   }
@@ -244,14 +250,15 @@ export function resolvePlayerPunch(w, ev) {
     cost += upper ? T.uppercutExtraStamina : T.whiffExtraStamina; // D11: +6 for an uppercut
     p.stats.whiffed += 1;
     w.emit(EVENT.WHIFF, { by: 'player', id, hand, punchType });
-    spend(w, cost);
+    pay(cost);
     return;
   }
   if (c.kind === 'blocked') {
     p.stats.blocked += 1;
     w.emit(EVENT.BLOCKED, { by: 'player', hand, punchType, attack: null, staminaCost: 0 });
+    if (training) onTrainingBlocked(w, { punchType, hitTime, snap });
     const extra = body ? T.bodyBlockedExtraStamina : upper ? T.uppercutExtraStamina : T.blockedStraightExtraStamina;
-    spend(w, cost + extra); // D9a / D11 / D12
+    pay(cost + extra); // D9a / D11 / D12
     return;
   }
 
@@ -261,9 +268,11 @@ export function resolvePlayerPunch(w, ev) {
   const formula = base * (0.5 + 0.5 * power) * fatigue * c.M * (hurt ? T.hurtPunchMult : 1) * exhaustedHead;
   const damage = Math.min(o.hp, body ? formula * T.bodyHpFactor : formula); // a body hit: 50% to HP…
   const staminaDrain = body ? formula * T.bodyStaminaDrain : 0; // …and 0.7 × the formula from her stamina
-  o.hp -= damage;
-  addDamage(w, 'player', damage);
-  if (staminaDrain > 0) addOppStamina(w, -staminaDrain);
+  if (!training) {
+    o.hp -= damage;
+    addDamage(w, 'player', damage);
+    if (staminaDrain > 0) addOppStamina(w, -staminaDrain);
+  }
   if (body) p.stats.bodyHits = (p.stats.bodyHits ?? 0) + 1;
   p.stats.landed += 1;
   if (c.counter) p.stats.counters += 1;
@@ -274,9 +283,10 @@ export function resolvePlayerPunch(w, ev) {
     target, staminaDrain, riposte: !!c.riposte,
   });
 
-  if (o.hp <= EPS) {
+  if (training) onTrainingHit(w, { hit: { punchType, counter: c.counter, interrupt: c.interrupt }, hitTime, snap });
+  if (!training && o.hp <= EPS) {
     o.hp = 0;
-    spend(w, cost);
+    pay(cost);
     knockdown(w, 'opponent');
     return;
   }
@@ -304,13 +314,14 @@ export function resolvePlayerPunch(w, ev) {
       ai.cleanHits.length = 0;
     }
   }
-  spend(w, cost);
+  pay(cost);
 }
 
 // ───────────────────────────────────────────── her strikes
 
 function damagePlayer(w, amount) {
   const st = w.state;
+  if (st.training) return 0; // D14: training.damage = false
   const applied = Math.min(st.player.hp, amount);
   st.player.hp -= applied;
   addDamage(w, 'opponent', applied);
@@ -333,8 +344,10 @@ export function resolveStrike(w) {
   const anchor = attack === ATTACK.ANCHOR_DROP;
   const pressured = !!p.pressured; // D9a
   const breakBelow = pressured ? T.pressureGuardBreakBelow : T.guardBreakBelow;
+  const training = !!st.training; // D14: no damage, no knockdown, no hurt; stamina only in sparring
+  const staminaOn = !training || trainingStamina(w);
 
-  const guardBroken = guarded && anchor && p.stamina < breakBelow;
+  const guardBroken = guarded && anchor && staminaOn && p.stamina < breakBelow;
   if (guardBroken) {
     p.guardBrokenUntil = t + T.guardBreakDur;
     p.guard = 'none';
@@ -344,12 +357,17 @@ export function resolveStrike(w) {
     w.emit(EVENT.PLAYER_HIT, { attack, side, damage, shakeTier: T.shakeTier[attack] });
   } else if (guarded) {
     const cost = anchor && pressured ? T.pressureAnchorBlockCost : T.blockCost[attack];
-    w.emit(EVENT.BLOCKED, { by: 'opponent', hand: side, punchType: null, attack, staminaCost: cost });
-    spend(w, cost);
+    w.emit(EVENT.BLOCKED, { by: 'opponent', hand: side, punchType: null, attack, staminaCost: staminaOn ? cost : 0 });
+    if (staminaOn) spend(w, cost);
     damagePlayer(w, anchor && pressured ? T.pressureAnchorBlockedDmg : T.blockedDamage[attack]);
   } else {
     const damage = damagePlayer(w, T.strikeDamage[attack]);
     w.emit(EVENT.PLAYER_HIT, { attack, side, damage, shakeTier: T.shakeTier[attack] });
+  }
+  if (training) {
+    const firstGuard = w.ctx.guardSamples.find((g) => g.ok && g.t >= o.contactAt - EPS);
+    onTrainingStrike(w, { blocked: guarded && !guardBroken, contactAt: o.contactAt, firstGuardAt: firstGuard ? firstGuard.t : null });
+    return false;
   }
   if (p.hp <= EPS) {
     p.hp = 0;

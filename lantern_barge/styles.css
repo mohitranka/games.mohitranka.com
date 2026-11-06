@@ -556,3 +556,110 @@ body.phase-round_end .hud-callout, body.phase-match_end .hud-callout, body.phase
   .hud-center .big, .hud-callout.show { animation-duration: 0.01s; }
 }
 @media (max-width: 640px) { .bar.sta.pressured .slow { display: none; } }
+
+/* ───────────── D14 Training mode */
+.hud.training:not(.sparring) .hud-top { visibility: hidden; }
+.tr[hidden], .tr [hidden] { display: none !important; }
+.tr-card {
+  position: absolute; left: 50%; top: 14px; transform: translateX(-50%);
+  width: min(560px, calc(100vw - 32px)); box-sizing: border-box; padding: 12px 18px 12px;
+  border-radius: 16px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--panel-edge), 0 14px 40px rgba(0, 0, 0, 0.4);
+  text-align: center;
+}
+.tr-head { display: flex; justify-content: space-between; font: 700 0.75rem/1 var(--display); letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); }
+.tr-reps { color: var(--brass); font-variant-numeric: tabular-nums; }
+.tr-title { margin: 6px 0 4px; font: 800 2rem/1 var(--display); letter-spacing: 0.05em; text-transform: uppercase; color: #ffe2b0; }
+.tr-line { margin: 0; font-size: 1.05rem; color: var(--ink); }
+.tr-line .hand { color: var(--ink-dim); font-size: 0.85em; }
+.tr-demo { margin-top: 8px; min-height: 0; }
+.tr-demo:empty { display: none; }
+.tr-demo .ghost-cap { font-size: 0.8rem; color: #9fe8ff; letter-spacing: 0.06em; }
+.tr-demo .keys { display: inline-flex; gap: 10px; }
+.tr-demo kbd { font-size: 1.1rem; padding: 0.3em 0.6em; min-width: 1.4em; transition: background 0.1s, color 0.1s; }
+.tr-demo kbd.glow { animation: keyglow 1.4s ease-in-out infinite; }
+.tr-demo kbd.pressed { background: var(--brass); color: var(--night); animation: none; box-shadow: 0 0 16px rgba(215, 169, 71, 0.9); }
+@keyframes keyglow { 0%, 60%, 100% { box-shadow: none; } 15% { box-shadow: 0 0 14px rgba(255, 211, 107, 0.95); border-color: #ffd36b; color: #ffd36b; } }
+.tr-pips { display: flex; justify-content: center; align-items: center; gap: 7px; margin-top: 8px; }
+.tr-pips:empty { display: none; }
+.tr-pips i { width: 13px; height: 13px; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(243, 234, 216, 0.4); }
+.tr-pips i.on { background: var(--brass); box-shadow: 0 0 8px var(--brass); }
+.tr-pips .hands { margin-left: 8px; font: 700 0.72rem/1 var(--display); letter-spacing: 0.12em; color: var(--ink-dim); }
+
+.tr-call { position: absolute; left: 16px; right: 16px; top: 27%; display: grid; justify-items: center; gap: 6px; text-align: center; }
+.tr-call-n { font: 700 0.85rem/1 var(--display); letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-dim); text-shadow: 0 2px 6px #000; }
+.tr-call-text { font: 900 clamp(1.8rem, 5.5vw, 3.6rem)/1 var(--display); text-transform: uppercase; color: #fff; text-shadow: 0 5px 0 rgba(0, 0, 0, 0.35), 0 0 26px rgba(0, 0, 0, 0.6); }
+.tr-call-bar { width: min(280px, 60vw); height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.15); overflow: hidden; }
+.tr-call-bar i { display: block; height: 100%; background: var(--brass); }
+
+.tr-feedback {
+  /* below the match callout (58%), which drills still use ("Opening! Counter now"): stacked, never on top (BUG-013) */
+  position: absolute; left: 50%; top: 64%; transform: translateX(-50%); max-width: calc(100vw - 32px); box-sizing: border-box;
+  padding: 0.5em 1.1em; border-radius: 12px; font: 600 1.15rem/1.3 var(--body); text-align: center; background: rgba(18, 14, 32, 0.8);
+}
+.tr-feedback:empty { display: none; }
+.tr-feedback.ok { color: #c9f5de; box-shadow: inset 0 0 0 1.5px rgba(127, 224, 168, 0.7); }
+.tr-feedback.ok .tick { color: #7fe0a8; font-size: 1.3em; margin-right: 4px; }
+.tr-feedback.wrong { color: #ffe2b0; box-shadow: inset 0 0 0 1.5px rgba(255, 179, 71, 0.7); }
+.tr-feedback.miss { color: #ffc2b0; box-shadow: inset 0 0 0 1.5px rgba(255, 139, 106, 0.6); }
+
+.tr-meter { position: absolute; right: 18px; top: 34%; display: flex; gap: 10px; padding: 10px; border-radius: 12px; background: rgba(18, 14, 32, 0.7); }
+.tr-meter .m { position: relative; width: 16px; height: 140px; border-radius: 4px; background: rgba(255, 255, 255, 0.1); }
+.tr-meter .m .v { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 4px; background: #8fb7ff; }
+.tr-meter .m.over .v { background: var(--sta); }
+.tr-meter .m .th { position: absolute; left: -4px; right: -4px; height: 2px; background: #fff; }
+.tr-meter .m span { position: absolute; bottom: -18px; left: 0; right: 0; text-align: center; font: 700 0.7rem/1 var(--display); color: var(--ink-dim); }
+
+.tr-timing { position: absolute; left: 50%; top: 75%; transform: translateX(-50%); display: grid; justify-items: center; gap: 4px; font: 700 0.85rem/1 var(--display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); text-shadow: 0 1px 4px #000; }
+.tr-timing .bar { position: relative; width: min(300px, 70vw); height: 10px; border-radius: 5px; background: rgba(255, 255, 255, 0.14); }
+.tr-timing .win { position: absolute; top: 0; bottom: 0; background: rgba(127, 224, 168, 0.55); border-radius: 5px; }
+.tr-timing .mark { position: absolute; top: -5px; bottom: -5px; width: 3px; margin-left: -1px; background: #fff; }
+.tr-timing .mark.early, .tr-timing .mark.late { background: #ff8b6a; }
+
+.tr-tally { position: absolute; left: 50%; top: 150px; transform: translateX(-50%); font: 700 0.85rem/1 var(--display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink); text-shadow: 0 1px 4px #000; }
+.tr-nav { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); font-size: 0.85rem; color: var(--ink-dim); white-space: nowrap; text-shadow: 0 1px 3px #000; }
+
+.tr-overlay, .tr-result {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(460px, calc(100vw - 32px)); box-sizing: border-box;
+  padding: 16px 20px; border-radius: 16px; background: rgba(18, 14, 32, 0.94); box-shadow: inset 0 0 0 1px var(--panel-edge), 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+.tr-overlay h2, .tr-result h2 { margin: 0 0 10px; font: 800 1.7rem/1 var(--display); letter-spacing: 0.06em; text-transform: uppercase; color: #ffe2b0; text-align: center; }
+.tr-menu { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.tr-menu li { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 8px; }
+.tr-menu li.current { background: rgba(255, 179, 71, 0.14); box-shadow: inset 0 0 0 1px rgba(255, 179, 71, 0.45); }
+.tr-menu b { width: 1.2em; text-align: center; }
+.tr-menu .mastered { color: #ffd36b; }
+.tr-menu .done { color: #7fe0a8; }
+.tr-menu .todo { color: var(--ink-dim); }
+.tr-menu em { margin-left: auto; font-style: normal; font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: #ffd36b; }
+.tr-sel { list-style: none; margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid rgba(255, 255, 255, 0.1); display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 0.85rem; color: var(--ink-dim); }
+.tr-sel b { color: #ffd9a8; font-weight: 700; }
+.tr-result { text-align: center; }
+.tr-result .tr-score { margin: 0 0 10px; color: var(--ink-dim); }
+.tr-result .tr-score b { display: block; font: 800 3rem/1 var(--display); color: #fff; }
+.tr-result .shots { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.tr-result .shots span { padding: 0.3em 0.6em; border-radius: 999px; font-size: 0.75rem; }
+.tr-result .shots .ok { background: rgba(127, 224, 168, 0.18); color: #c9f5de; }
+.tr-result .shots .miss { background: rgba(255, 139, 106, 0.18); color: #ffc2b0; }
+.tr-result .mistake { margin: 12px 0 0; color: #ffd27d; font-weight: 600; }
+.tr-res-nav { margin: 12px 0 0; font-size: 0.85rem; color: var(--ink-dim); }
+
+/* D14 title: the two Train buttons sit beside the Box buttons, quieter (outlined in brass) */
+#boot .btn-train {
+  color: #ffe2b0;
+  background: rgba(255, 179, 71, 0.08);
+  box-shadow: inset 0 0 0 1.5px rgba(215, 169, 71, 0.75);
+}
+#boot .btn-train:hover { background: rgba(255, 179, 71, 0.16); }
+@media (max-width: 640px) { .tr-meter { top: auto; bottom: 60px; right: 10px; } .tr-meter .m { height: 90px; } }
+/* D14 title-screen progress (PD writes the text; one line per input) */
+#boot .boot-progress {
+  margin: 2px 0 0;
+  padding: 0.5em 1em;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.28);
+  font: 600 0.82rem/1.6 var(--body);
+  letter-spacing: 0.02em;
+  color: #ffe2b0;
+  text-align: center;
+}
+#boot .boot-progress[hidden] { display: none; }

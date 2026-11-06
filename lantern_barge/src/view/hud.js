@@ -6,6 +6,7 @@
 //   cards: practice, rest (with the step-back hint), result, calibration (skeleton, hint, meter), pause, reconnect
 
 import { activeMoves, anyGatedMove, featureOn, featuresOf, menuKey } from './features.js';
+import { createTrainingHud } from './training-hud.js';
 
 export const HINTS = {
   show_both_fists: 'Show both fists to the camera',
@@ -149,6 +150,7 @@ export function createHud(root, send) {
     <div class="hud-prompt" hidden></div>
     <div class="hud-banner" hidden></div>`;
   root.appendChild(wrap);
+  const training = createTrainingHud(wrap); // D14 (PD draws the title-screen mastery ticks in #boot)
 
   const $ = (sel) => wrap.querySelector(sel);
   const R = {
@@ -471,6 +473,9 @@ export function createHud(root, send) {
           if (e.from === 'match_end') matchPoints = null;
           out.push('card');
           break;
+        case 'training_rep': case 'training_call': case 'training_result': case 'training_item': case 'near_miss':
+          out.push(...training.handle(e, state));
+          break;
         case 'match_end':
           if (e.points && Number.isFinite(e.points.player)) matchPoints = { ...e.points };
           cardKey = ''; // rebuild the result card with the event's points
@@ -498,6 +503,7 @@ export function createHud(root, send) {
 
     reset() {
       flash = callout = cost = matchPoints = null;
+      training.reset();
       cache.clear();
       cardKey = '';
     },
@@ -629,6 +635,11 @@ export function createHud(root, send) {
         if (left) left.textContent = Number.isFinite(rl) ? `in ${Math.max(0, Math.ceil(rl - 1e-6))} s` : 'soon';
       }
 
+      // D14 training HUD
+      training.update(state, frame, camera);
+      wrap.classList.toggle('training', phase === 'training');
+      wrap.classList.toggle('sparring', phase === 'training' && state.training?.item === 'sparring');
+
       // calibration HUD
       const calOn = phase === 'calibration';
       set('calibHidden', R.calib, 'hidden', !calOn);
@@ -679,6 +690,7 @@ export function createHud(root, send) {
     debug() {
       return {
         center: R.big.textContent, sub: R.sub.textContent, callout: R.callout.textContent,
+        training: training.debug(),
         card: cardKey, calib: !R.calib.hidden, framing: framingState, calibHint: R.cHint.textContent,
         prompt: R.prompt.hidden ? null : R.prompt.textContent.replace(/\s+/g, ' ').trim(),
         prompts: [...wrap.querySelectorAll('.prompt')].filter((e) => e.offsetParent !== null || e.closest('.hud-prompt:not([hidden])'))
